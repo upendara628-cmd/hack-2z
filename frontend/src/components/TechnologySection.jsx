@@ -50,7 +50,7 @@ const TechSkeleton = () => (
   </div>
 );
 
-const TechnologySection = () => {
+const TechnologySection = ({ onCategorySelect }) => {
   const [techArticles, setTechArticles] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -141,7 +141,7 @@ const TechnologySection = () => {
           <div className="main-column">
             <div className="section-header">
               <h2 className="section-title">Technology</h2>
-              <a href="#" className="view-all">ALL TECHNOLOGY →</a>
+              <a href="#" className="view-all" onClick={(e) => { e.preventDefault(); onCategorySelect('technology'); }}>ALL TECHNOLOGY →</a>
             </div>
             <div className="tech-articles">
               {loading ? (

@@ -7,27 +7,55 @@ import TechnologySection from './components/TechnologySection.jsx';
 import TrendingSection from './components/TrendingSection.jsx';
 import Footer from './components/Footer.jsx';
 import UserDashboard from './components/UserDashboard.jsx';
+import CategoryView from './components/CategoryView.jsx';
 import './App.css';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
+  const [selectedCategory, setSelectedCategory] = useState(null);
+
+  const handleCategorySelect = (cat) => {
+    if (cat === 'world') {
+      setSelectedCategory(null);
+    } else {
+      setSelectedCategory(cat);
+    }
+    setCurrentPage('home'); // Ensure we are on home route to show categories
+  };
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    setSelectedCategory(null); // Reset category when switching page
+  };
 
   return (
     <div className="App">
-      <Header currentPage={currentPage} onPageChange={setCurrentPage} />
+      <Header 
+        currentPage={currentPage} 
+        onPageChange={handlePageChange} 
+        onCategorySelect={handleCategorySelect}
+        activeCategory={selectedCategory || (currentPage === 'home' ? 'world' : '')}
+      />
       
       {currentPage === 'home' && (
-        <main className="main-content">
-          <div className="container">
-            <div className="top-section">
-              <FeaturedArticle />
-              <Sidebar />
+        selectedCategory ? (
+          <CategoryView 
+            category={selectedCategory} 
+            onBack={() => setSelectedCategory(null)} 
+          />
+        ) : (
+          <main className="main-content">
+            <div className="container">
+              <div className="top-section">
+                <FeaturedArticle />
+                <Sidebar onCategorySelect={handleCategorySelect} />
+              </div>
             </div>
-          </div>
-          <PoliticsSection />
-          <TechnologySection />
-          <TrendingSection />
-        </main>
+            <PoliticsSection onCategorySelect={handleCategorySelect} />
+            <TechnologySection onCategorySelect={handleCategorySelect} />
+            <TrendingSection />
+          </main>
+        )
       )}
 
       {currentPage === 'dashboard' && (
