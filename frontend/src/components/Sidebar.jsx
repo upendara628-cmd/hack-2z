@@ -1,12 +1,12 @@
 import React from 'react';
 
-const Sidebar = () => {
+const Sidebar = ({ onCategorySelect }) => {
   return (
     <aside className="sidebar">
       <div className="sidebar-section">
         <div className="sidebar-header">
           <h3>POLITICS</h3>
-          <a href="#" className="view-all">ALL POLITICS →</a>
+          <a href="#" className="view-all" onClick={(e) => { e.preventDefault(); onCategorySelect('politics'); }}>ALL POLITICS →</a>
         </div>
         <article className="sidebar-article">
           <span className="category-tag">POLITICS</span>
@@ -21,7 +21,7 @@ const Sidebar = () => {
       <div className="sidebar-section">
         <div className="sidebar-header">
           <h3>TECHNOLOGY</h3>
-          <a href="#" className="view-all">ALL TECHNOLOGY →</a>
+          <a href="#" className="view-all" onClick={(e) => { e.preventDefault(); onCategorySelect('technology'); }}>ALL TECHNOLOGY →</a>
         </div>
         <article className="sidebar-article">
           <span className="category-tag">TECHNOLOGY</span>
@@ -36,7 +36,7 @@ const Sidebar = () => {
       <div className="sidebar-section">
         <div className="sidebar-header">
           <h3>BUSINESS</h3>
-          <a href="#" className="view-all">ALL BUSINESS →</a>
+          <a href="#" className="view-all" onClick={(e) => { e.preventDefault(); onCategorySelect('business'); }}>ALL BUSINESS →</a>
         </div>
         <article className="sidebar-article">
           <span className="category-tag">BUSINESS</span>

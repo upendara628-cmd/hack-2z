@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const Header = ({ currentPage, onPageChange }) => {
+const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory }) => {
   const [chatMessage, setChatMessage] = useState('');
 
   const handleChat = (e) => {
@@ -75,12 +75,48 @@ const Header = ({ currentPage, onPageChange }) => {
             
             {/* Centered Secondary Nav Links directly under search bar */}
             <nav className="hero-secondary-nav">
-              <a href="#" className="hero-nav-link active">World</a>
-              <a href="#" className="hero-nav-link">Politics</a>
-              <a href="#" className="hero-nav-link">Business</a>
-              <a href="#" className="hero-nav-link">Technology</a>
-              <a href="#" className="hero-nav-link">Science</a>
-              <a href="#" className="hero-nav-link">Opinion</a>
+              <a 
+                href="#" 
+                className={`hero-nav-link ${activeCategory === 'world' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); onCategorySelect('world'); }}
+              >
+                World
+              </a>
+              <a 
+                href="#" 
+                className={`hero-nav-link ${activeCategory === 'politics' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); onCategorySelect('politics'); }}
+              >
+                Politics
+              </a>
+              <a 
+                href="#" 
+                className={`hero-nav-link ${activeCategory === 'business' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); onCategorySelect('business'); }}
+              >
+                Business
+              </a>
+              <a 
+                href="#" 
+                className={`hero-nav-link ${activeCategory === 'technology' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); onCategorySelect('technology'); }}
+              >
+                Technology
+              </a>
+              <a 
+                href="#" 
+                className={`hero-nav-link ${activeCategory === 'science' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); onCategorySelect('science'); }}
+              >
+                Science
+              </a>
+              <a 
+                href="#" 
+                className={`hero-nav-link ${activeCategory === 'opinion' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); onCategorySelect('opinion'); }}
+              >
+                Opinion
+              </a>
             </nav>
           </div>
         </div>

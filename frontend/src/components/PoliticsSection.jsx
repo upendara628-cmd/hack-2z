@@ -47,7 +47,7 @@ const CardSkeleton = () => (
   </div>
 );
 
-const PoliticsSection = () => {
+const PoliticsSection = ({ onCategorySelect }) => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -115,7 +115,7 @@ const PoliticsSection = () => {
       <div className="container">
         <div className="section-header">
           <h2 className="section-title">Politics</h2>
-          <a href="#" className="view-all">ALL POLITICS →</a>
+          <a href="#" className="view-all" onClick={(e) => { e.preventDefault(); onCategorySelect('politics'); }}>ALL POLITICS →</a>
         </div>
         <div className="politics-grid">
           {loading ? (
