@@ -1,11 +1,16 @@
 {
   "name": "meridian-news",
   "version": "1.0.0",
-  "description": "The Meridian News Homepage",
+  "description": "Truth Lens News Homepage",
   "private": true,
   "dependencies": {
+    "@livekit/components-react": "^2.9.23",
+    "livekit-client": "^2.20.1",
+    "ogl": "^1.0.11",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-globe.gl": "^2.38.0",
+    "react-icons": "^5.7.0",
     "react-scripts": "5.0.1"
   },
   "scripts": {

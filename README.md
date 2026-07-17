@@ -1,90 +1,258 @@
-# Meridian News - Project Architecture
+# 🗞️ The Meridian — AI-Powered News Portal
 
-Welcome to the **Meridian News** project. This document outlines the project structure, architectural design, component hierarchy, and instructions on running the application.
+> A next-generation news aggregator with an interactive AI presenter, real-time bias analysis, and multi-source news aggregation.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🌐 Live Demo
 
-The application is structured as a single-page React frontend located in the `frontend` directory, with a placeholder `backend` directory for future API integrations.
+| Service | URL |
+|---------|-----|
+| **Frontend** | [https://meridian-news.netlify.app](https://meridian-news.netlify.app) |
+| **Backend API** | [https://meridian-news-backend.onrender.com](https://meridian-news-backend.onrender.com) |
 
-```mermaid
-graph TD
-    App[App.jsx] --> Header[Header.jsx]
-    App --> Main["main (Main Content Area)"]
-    App --> Newsletter[NewsletterSection.jsx]
-    App --> Footer[Footer.jsx]
+---
 
-    subgraph Main Content Area
-        Main --> Top["top-section (Flex/Grid Layout)"]
-        Main --> Politics[PoliticsSection.jsx]
-        Main --> Tech[TechnologySection.jsx]
-        Main --> Trending[TrendingSection.jsx]
+## ✨ Features
 
-        Top --> Featured[FeaturedArticle.jsx]
-        Top --> Sidebar[Sidebar.jsx]
-    end
+### 🎙️ Interactive AI Presenter (Emma)
+- **ElevenLabs AI Voice** — Natural human-quality voice (Sarah voice model)
+- **D-ID Live Avatar** — Photorealistic talking head with lip-sync via WebRTC
+- **Groq LLaMA Chat** — Ask Emma any news question and she'll answer intelligently
+- **Daily News Briefing** — Emma reads the top 3 headlines aloud in broadcast style
 
-    style App fill:#f9f,stroke:#333,stroke-width:2px
-    style Main fill:#bbf,stroke:#333,stroke-width:1px
+### 📡 Multi-Source News Aggregation
+The app checks **3 different news websites simultaneously**:
+
+| Source | Website | Coverage |
+|--------|---------|----------|
+| **CurrentsAPI** | currentsapi.services | 50,000+ global sources, breaking news |
+| **NewsData.io** | newsdata.io | 80,000+ publishers across 200+ countries |
+| **GNews** | gnews.io | Google News-indexed verified publishers |
+
+### 🤖 AI Bias Analysis
+Every article is analyzed by **Groq Llama-3.1-8b** for:
+- Political bias classification: `Left-Leaning` / `Right-Leaning` / `Neutral`
+- 3 bullet-point analysis of framing, omitted facts, and tone
+
+### 🔐 Authentication
+- **Google OAuth** sign-in
+- **Email/Password** login with Supabase DB validation
+- Smart auth flow: if no account exists → prompts to sign up with one click
+- All user data stored in **Supabase** PostgreSQL
+
+### 🗂️ News Categories
+- Politics, Technology, Science, World, Sports
+- Country-specific news filtering
+- Trending topics sidebar
+
+---
+
+## 🏗️ Architecture
+
 ```
-
----
-
-## 📁 Directory Structure
-
-```text
 hackthon/
-├── backend/                  # Backend API services (Placeholder)
-├── frontend/                 # React Frontend Application
-│   ├── public/               # Static assets
-│   └── src/                  # Source files
-│       ├── components/       # Reusable React components
-│       │   ├── FeaturedArticle.jsx
-│       │   ├── Footer.jsx
-│       │   ├── Header.jsx
-│       │   ├── NewsletterSection.jsx
-│       │   ├── PoliticsSection.jsx
-│       │   ├── Sidebar.jsx
-│       │   ├── TechnologySection.jsx
-│       │   └── TrendingSection.jsx
-│       ├── App.css           # Global layout & styles
-│       ├── App.jsx           # Root layout component
-│       ├── index.css         # Reset & typography styles
-│       └── index.js          # React entry point
-└── README.md                 # This documentation
+├── frontend/          # React 18 app (Create React App)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AiPresenter.jsx    # D-ID + ElevenLabs presenter
+│   │   │   ├── Login.jsx          # Glassmorphic auth UI
+│   │   │   ├── Header.jsx
+│   │   │   ├── FeaturedArticle.jsx
+│   │   │   ├── PoliticsSection.jsx
+│   │   │   ├── TechnologySection.jsx
+│   │   │   ├── TrendingSection.jsx
+│   │   │   ├── CategoryView.jsx
+│   │   │   ├── UserDashboard.jsx
+│   │   │   └── Sidebar.jsx
+│   │   ├── utils/
+│   │   │   └── did-stream.js      # D-ID WebRTC manager
+│   │   ├── config.js              # API base URL config
+│   │   └── App.jsx
+│   └── public/
+│       └── index.html             # Google GSI script
+│
+├── backend/           # Python Flask API
+│   └── app.py         # All API routes
+│
+├── .env               # Environment variables (not committed)
+├── render.yaml        # Render.com deployment blueprint
+└── setup_supabase.sql # Supabase schema setup
 ```
 
 ---
 
-## 🧩 Component Breakdown
+## 🔑 API Keys & Services
 
-### Core Layout Components
-- **[App.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/App.jsx)**: Orchestrates the overall layout structure, coordinating the header, main content grids, sections, newsletter sign-up, and footer.
-- **[Header.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/Header.jsx)**: Global navigation bar and site branding.
-- **[Footer.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/Footer.jsx)**: Global footer containing links, copyright notices, and site maps.
-
-### Content Sections
-- **[FeaturedArticle.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/FeaturedArticle.jsx)**: Highlighted hero story showcased prominently on the main page.
-- **[Sidebar.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/Sidebar.jsx)**: Secondary side-content panel listing quick bites, ads, or secondary highlights.
-- **[PoliticsSection.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/PoliticsSection.jsx)**: Dedicated content section displaying recent political news.
-- **[TechnologySection.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/TechnologySection.jsx)**: Grid/list layout of technology-focused news and articles.
-- **[TrendingSection.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/TrendingSection.jsx)**: List of popular or trending articles.
-- **[NewsletterSection.jsx](file:///c:/Users/sivan/Downloads/upender/hackthon/frontend/src/components/NewsletterSection.jsx)**: Subscription box allowing users to sign up for email newsletters.
+| Service | Purpose | Key Variable |
+|---------|---------|-------------|
+| **D-ID** | Live avatar streaming (WebRTC) | `DID_API_KEY` |
+| **ElevenLabs** | Natural AI voice TTS | `ELEVENLABS_API_KEY` |
+| **Groq** | LLaMA-3.1 chat & bias analysis | `GROQ_API_KEY` |
+| **NewsData.io** | News aggregation (pub_ key) | `NEWSAPI_KEY` |
+| **CurrentsAPI** | News aggregation | `CURRENTS_API_KEY` |
+| **Supabase** | PostgreSQL DB + auth | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
+| **Google OAuth** | Social login | Client ID in `Login.jsx` |
 
 ---
 
-## 🚀 Running the Application
+## 🚀 Local Development
 
 ### Prerequisites
-Make sure you have Node.js and npm installed.
+- Python 3.11+
+- Node.js 18+
 
-### Start the React Frontend
-Navigate to the `frontend` directory, install dependencies (if not already done), and start the application:
+### Backend
+```bash
+cd hackthon
 
+# Activate virtual environment
+.venv\Scripts\activate      # Windows
+source .venv/bin/activate   # macOS/Linux
+
+# Start Flask server
+python backend/app.py
+# Runs on http://localhost:5000
+```
+
+### Frontend
 ```bash
 cd frontend
 npm install
 npm start
+# Runs on http://localhost:3000
 ```
-This will launch the app in development mode at [http://localhost:3000](http://localhost:3000).
+
+### Environment Variables (`.env` in root)
+```env
+GROQ_API_KEY=your_groq_key
+CURRENTS_API_KEY=your_currents_key
+NEWSAPI_KEY=pub_bccd32094e1d4c428735a806d84d71fc
+DID_API_KEY=base64email:secret_key
+ELEVENLABS_API_KEY=sk_...
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+---
+
+## 🗃️ Supabase Database Schema
+
+Run `setup_supabase.sql` in your Supabase SQL editor:
+
+```sql
+-- Users table (for auth)
+CREATE TABLE users (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- News cache table
+CREATE TABLE news_cache (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  url TEXT,
+  image TEXT,
+  author TEXT,
+  time TEXT,
+  category TEXT,
+  source TEXT,
+  bias_tone TEXT,
+  bias_analysis JSONB,
+  cache_key TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## 🎭 D-ID Avatar — Known Issue & How It Works
+
+The D-ID live avatar uses **WebRTC** streaming. Here's what happens when you click "Initialize":
+
+1. Backend creates a D-ID stream session (`POST /api/did-stream/create`) → returns ICE servers + SDP offer
+2. Frontend creates `RTCPeerConnection`, sets remote description
+3. Frontend creates SDP answer, sends it back to D-ID
+4. ICE candidate exchange completes the WebRTC handshake
+5. D-ID sends video track → `video.srcObject` set → video displays
+6. After 2 seconds, `talk()` is called → **Emma's face animates with lip-sync**
+
+> ⚠️ **The avatar only shows Emma's face when she is actively speaking** (calling `/api/did-stream/talk`). While idle, the stream is connected but the video is a static/idle frame. ElevenLabs voice plays independently and instantly.
+
+### D-ID Auth Format
+D-ID API keys follow the format: `base64(email):secret_key`  
+The backend encodes the **entire** raw string as Base64 for Basic auth:
+```python
+DID_AUTH_HEADER = f"Basic {base64.b64encode(raw_key.encode()).decode()}"
+```
+
+---
+
+## 🌐 Deployment (Render + Netlify)
+
+### Backend → Render.com
+- Service type: **Web Service**
+- Build command: `pip install -r backend/requirements.txt`
+- Start command: `gunicorn app:app`
+- Root directory: `backend/`
+- Add all env vars in Render dashboard
+
+### Frontend → Netlify
+- Base directory: `frontend/`
+- Build command: `npm run build`
+- Publish directory: `frontend/build`
+- Set `REACT_APP_API_URL=https://meridian-news-backend.onrender.com`
+
+### Google OAuth — Required Setup
+Add these **Authorized JavaScript Origins** in [Google Cloud Console](https://console.cloud.google.com/):
+```
+http://localhost:3000
+https://meridian-news.netlify.app
+```
+
+---
+
+## 📚 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|---------|-------------|
+| `GET` | `/api/news?keyword=politics` | Fetch news from all 3 sources |
+| `GET` | `/api/news/sources` | List all news websites checked |
+| `POST` | `/api/chat` | Chat with Emma (Groq AI) |
+| `POST` | `/api/tts` | ElevenLabs text-to-speech |
+| `POST` | `/api/auth/check` | Check if user has account in DB |
+| `POST` | `/api/auth/signup` | Register new user in Supabase |
+| `POST` | `/api/did-stream/create` | Create D-ID WebRTC session |
+| `POST` | `/api/did-stream/sdp` | Exchange SDP answer |
+| `POST` | `/api/did-stream/ice` | Send ICE candidates |
+| `POST` | `/api/did-stream/talk` | Make avatar speak |
+| `POST` | `/api/did-stream/destroy` | End D-ID session |
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, Vanilla CSS |
+| Backend | Python Flask, Flask-CORS |
+| AI Voice | ElevenLabs (Turbo v2.5) |
+| AI Avatar | D-ID (WebRTC streaming) |
+| AI Chat | Groq (LLaMA-3.1-8b-instant) |
+| Database | Supabase (PostgreSQL) |
+| News APIs | CurrentsAPI, NewsData.io, GNews |
+| Auth | Google OAuth 2.0 (GSI) + Email/Password |
+| Deployment | Render (backend) + Netlify (frontend) |
+
+---
+
+## 👥 Team
+
+Built for **Hackathon 2026** by Team Meridian.
+
+---
+
+*© 2026 The Meridian. All rights reserved.*

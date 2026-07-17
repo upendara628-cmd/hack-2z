@@ -43,9 +43,10 @@ const Footer = () => {
             </ul>
           </div>
         </div>
+
         <div className="footer-bottom">
-          <div className="footer-brand">THE MERIDIAN</div>
-          <div className="footer-copyright">© 2026 The Meridian Publishing Group. All rights reserved.</div>
+          <div className="footer-brand">TRUTH LENS</div>
+          <div className="footer-copyright">© 2026 Truth Lens Publishing Group. All rights reserved.</div>
           <div className="footer-links">
             <a href="#">Privacy</a>
             <a href="#">Terms</a>
