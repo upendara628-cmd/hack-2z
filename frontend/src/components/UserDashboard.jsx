@@ -133,6 +133,30 @@ const UserDashboard = () => {
     detectLocation();
   }, []);
 
+  useEffect(() => {
+    if (!loading && articles.length > 0 && locationName !== 'Detecting...') {
+      const logLocationStats = async () => {
+        try {
+          await fetch('http://127.0.0.1:5000/api/location-stats', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              location_name: locationName,
+              country_code: countryCode,
+              coords: coords,
+              bias_stats: biasStats
+            })
+          });
+        } catch (err) {
+          console.error("Error logging location stats:", err);
+        }
+      };
+      logLocationStats();
+    }
+  }, [loading, articles, locationName, countryCode, coords, biasStats]);
+
   const calculateBiasStats = (articleList) => {
     if (articleList.length === 0) {
       setBiasStats({ left: 33, right: 33, neutral: 34 });
