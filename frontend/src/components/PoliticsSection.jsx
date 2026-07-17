@@ -1,26 +1,114 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+
+const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  if (!biasTone) return null;
+  
+  const getBadgeClass = (tone) => {
+    const t = tone.toLowerCase();
+    if (t.includes('left')) return 'left-leaning';
+    if (t.includes('right')) return 'right-leaning';
+    return 'neutral';
+  };
+  
+  return (
+    <div className="bias-container">
+      <div className="bias-header-row">
+        <span className={`bias-badge ${getBadgeClass(biasTone)}`}>
+          ⚖️ {biasTone}
+        </span>
+        <button 
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); }}
+          className="bias-analysis-toggle"
+        >
+          {isOpen ? 'Hide AI ▲' : 'Show AI ▼'}
+        </button>
+      </div>
+      {isOpen && (
+        <div className="bias-analysis-content">
+          <h5>AI Bias Report</h5>
+          <ul className="bias-analysis-list">
+            {biasAnalysis && biasAnalysis.map((bullet, idx) => (
+              <li key={idx}>{bullet}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CardSkeleton = () => (
+  <div className="skeleton-card">
+    <div className="skeleton-image"></div>
+    <div className="skeleton-title" style={{ height: '18px', width: '80%' }}></div>
+    <div className="skeleton-text" style={{ height: '12px', width: '50%', marginTop: '6px' }}></div>
+  </div>
+);
 
 const PoliticsSection = () => {
-  const articles = [
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('http://localhost:5000/api/news?keyword=politics')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          setArticles(data);
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Error fetching politics news:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  const defaultArticles = [
     {
       image: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&h=250&fit=crop",
       title: "Zelensky Meets with New EU Commission President in Brussels",
       author: "Ivan Yurchenko",
-      time: "6 hours ago"
+      time: "6 hours ago",
+      url: "#",
+      bias_tone: "Neutral",
+      bias_analysis: [
+        "Provides balanced coverage quoting representatives from both developing and developed nations.",
+        "Relies primarily on official press releases which maintains standard diplomatic tone.",
+        "Focuses on policy commitments without editorializing."
+      ]
     },
     {
       image: "https://images.unsplash.com/photo-1573164713988-8665fc963095?w=400&h=250&fit=crop",
       title: "What Happens When a Country Runs Out of Judges",
       author: "Prof. Natasha Volkov",
-      time: "8 hours ago"
+      time: "8 hours ago",
+      url: "#",
+      bias_tone: "Neutral",
+      bias_analysis: [
+        "Objective reporting on structural issues within judicial appointments.",
+        "Highlights the lack of resources using verified court backlogs.",
+        "Includes call for legislative reform from legal experts."
+      ]
     },
     {
       image: "https://images.unsplash.com/photo-1555848962-6e79363ec58f?w=400&h=250&fit=crop",
       title: "The Liberal International Order Was Always a Story We Told Ourselves",
       author: "James Okafor",
-      time: "12 hours ago"
+      time: "12 hours ago",
+      url: "#",
+      bias_tone: "Left-Leaning",
+      bias_analysis: [
+        "Frames traditional alliances as outdated and in decline.",
+        "Focuses on critical historical critiques of international organizations.",
+        "Omits viewpoints defending historical post-war stability."
+      ]
     }
   ];
+
+  const displayArticles = articles.length > 0 ? articles : defaultArticles;
 
   return (
     <section className="politics-section">
@@ -30,19 +118,40 @@ const PoliticsSection = () => {
           <a href="#" className="view-all">ALL POLITICS →</a>
         </div>
         <div className="politics-grid">
-          {articles.map((article, index) => (
-            <article key={index} className="politics-card">
-              <div className="politics-image">
-                <img src={article.image} alt="Politics" />
-              </div>
-              <span className="category-tag">POLITICS</span>
-              <h4 className="politics-title">{article.title}</h4>
-              <div className="article-meta">
-                <span className="author">{article.author}</span>
-                <span className="time">{article.time}</span>
-              </div>
-            </article>
-          ))}
+          {loading ? (
+            <>
+              <CardSkeleton />
+              <CardSkeleton />
+              <CardSkeleton />
+            </>
+          ) : (
+            displayArticles.slice(0, 3).map((article, index) => (
+              <a 
+                key={index} 
+                href={article.url} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <article className="politics-card">
+                  <div className="politics-image">
+                    <img src={article.image} alt={article.title} />
+                  </div>
+                  <span className="category-tag">POLITICS</span>
+                  <h4 className="politics-title">{article.title}</h4>
+                  <div className="article-meta">
+                    <span className="author">{article.author}</span>
+                    <span className="time">{article.time}</span>
+                  </div>
+                  
+                  <BiasAnalysis 
+                    biasTone={article.bias_tone} 
+                    biasAnalysis={article.bias_analysis} 
+                  />
+                </article>
+              </a>
+            ))
+          )}
         </div>
       </div>
     </section>
