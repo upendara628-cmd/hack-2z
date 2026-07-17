@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
 
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
@@ -53,7 +53,9 @@ const TechSkeleton = () => (
 
 const TechnologySection = ({ onCategorySelect }) => {
   const [techArticles, setTechArticles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [opinionArticles, setOpinionArticles] = useState([]);
+  const [loadingTech, setLoadingTech] = useState(true);
+  const [loadingOpinions, setLoadingOpinions] = useState(true);
   const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
@@ -63,47 +65,103 @@ const TechnologySection = ({ onCategorySelect }) => {
         if (data && data.length > 0) {
           setTechArticles(data);
         }
-        setLoading(false);
+        setLoadingTech(false);
       })
       .catch(err => {
         console.error('Error fetching tech news:', err);
-        setLoading(false);
+        setLoadingTech(false);
+      });
+
+    fetch(`${API_BASE_URL}/api/news?keyword=opinion`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          setOpinionArticles(data);
+        }
+        setLoadingOpinions(false);
+      })
+      .catch(err => {
+        console.error('Error fetching opinion news:', err);
+        setLoadingOpinions(false);
       });
   }, []);
 
+  const loading = loadingTech;
+
+  const audioRef = useRef(null);
+
   useEffect(() => {
     return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       window.speechSynthesis.cancel();
     };
   }, []);
 
-  const handleSpeak = (e, article) => {
+  const handleSpeak = async (e, article) => {
     e.preventDefault();
     e.stopPropagation();
 
     const id = article.id || article.title;
     if (speakingId === id) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       window.speechSynthesis.cancel();
       setSpeakingId(null);
     } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       window.speechSynthesis.cancel();
       setSpeakingId(id);
       
       const cleanDesc = article.description ? article.description.replace(/<[^>]*>/g, '') : '';
       const textToSpeak = `${article.title}. ${cleanDesc}`;
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      
-      const voices = window.speechSynthesis.getVoices();
-      const premiumVoice = voices.find(v => 
-        v.name.includes('Google') && v.lang.startsWith('en') || 
-        v.name.includes('Natural') && v.lang.startsWith('en') ||
-        v.lang.startsWith('en-US')
-      );
-      if (premiumVoice) utterance.voice = premiumVoice;
 
-      utterance.onend = () => setSpeakingId(null);
-      utterance.onerror = () => setSpeakingId(null);
-      window.speechSynthesis.speak(utterance);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: textToSpeak })
+        });
+        
+        if (!response.ok) throw new Error('ElevenLabs TTS failed');
+        
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        
+        audio.onended = () => {
+          setSpeakingId(null);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.onerror = () => {
+          setSpeakingId(null);
+          URL.revokeObjectURL(audioUrl);
+        };
+        
+        await audio.play();
+      } catch (err) {
+        console.warn('ElevenLabs TTS failed, falling back to browser SpeechSynthesis:', err);
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        const voices = window.speechSynthesis.getVoices();
+        const premiumVoice = voices.find(v => 
+          v.name.includes('Google') && v.lang.startsWith('en') || 
+          v.name.includes('Natural') && v.lang.startsWith('en') ||
+          v.lang.startsWith('en-US')
+        );
+        if (premiumVoice) utterance.voice = premiumVoice;
+
+        utterance.onend = () => setSpeakingId(null);
+        utterance.onerror = () => setSpeakingId(null);
+        window.speechSynthesis.speak(utterance);
+      }
     }
   };
 
@@ -149,7 +207,7 @@ const TechnologySection = ({ onCategorySelect }) => {
     }
   ];
 
-  const opinionArticles = [
+  const defaultOpinionArticles = [
     {
       image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=60&h=60&fit=crop",
       title: "The Liberal International Order Was Always a Story We Told Ourselves",
@@ -171,6 +229,7 @@ const TechnologySection = ({ onCategorySelect }) => {
   ];
 
   const displayTechArticles = techArticles.length > 0 ? techArticles : defaultTechArticles;
+  const displayOpinionArticles = opinionArticles.length > 0 ? opinionArticles : defaultOpinionArticles;
 
   return (
     <section className="technology-section">
@@ -243,35 +302,61 @@ const TechnologySection = ({ onCategorySelect }) => {
           <div className="opinion-column">
             <div className="section-header">
               <h2 className="section-title">Opinion</h2>
-              <a href="#" className="view-all">ALL OPINION →</a>
+              <a href="#" className="view-all" onClick={(e) => { e.preventDefault(); onCategorySelect('opinion'); }}>ALL OPINION →</a>
             </div>
             <div className="opinion-articles">
-              {opinionArticles.map((article, index) => {
-                const currentId = article.title;
-                const isSpeaking = speakingId === currentId;
-                
-                return (
-                  <article key={index} className={`opinion-article ${isSpeaking ? 'article-card-speaking-highlight' : ''}`}>
-                    <div className="opinion-author">
-                      <img src={article.image} alt={article.author} />
-                    </div>
-                    <div className="opinion-content" style={{ flexGrow: 1 }}>
-                      <h4 className="opinion-title">{article.title}</h4>
-                      <p className="opinion-author-name">{article.author}</p>
-                      <p className="opinion-author-title">{article.title_role}</p>
-                      <div className="speak-article-badge-row" style={{ marginTop: '6px', border: 'none', paddingTop: 0 }}>
-                        <span></span>
-                        <button 
-                          className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
-                          onClick={(e) => handleSpeak(e, article)}
-                        >
-                          {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+              {loadingOpinions ? (
+                <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Loading real opinions...</div>
+              ) : (
+                displayOpinionArticles.slice(0, 3).map((article, index) => {
+                  const currentId = article.id || article.title;
+                  const isSpeaking = speakingId === currentId;
+                  
+                  const avatarUrl = article.image && !article.image.includes('unsplash.com') && article.image !== '#' && !article.image.includes('avatar')
+                    ? article.image
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(article.author || 'Author')}&background=3b82f6&color=fff&size=100`;
+
+                  return (
+                    <a 
+                      key={index} 
+                      href={article.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      style={{ textDecoration: 'none', color: 'inherit' }}
+                    >
+                      <article className={`opinion-article ${isSpeaking ? 'article-card-speaking-highlight' : ''}`}>
+                        <div className="opinion-author">
+                          <img 
+                            src={avatarUrl} 
+                            alt={article.author} 
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(article.author || 'Author')}&background=3b82f6&color=fff&size=100`;
+                            }}
+                          />
+                        </div>
+                        <div className="opinion-content" style={{ flexGrow: 1 }}>
+                          <h4 className="opinion-title">{article.title}</h4>
+                          <p className="opinion-author-name">{article.author}</p>
+                          <p className="opinion-author-title">{article.title_role || article.source || 'Opinion Column'}</p>
+                          <div className="speak-article-badge-row" style={{ marginTop: '6px', border: 'none', paddingTop: 0 }}>
+                            <BiasAnalysis 
+                              biasTone={article.bias_tone} 
+                              biasAnalysis={article.bias_analysis} 
+                            />
+                            <button 
+                              className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
+                              onClick={(e) => handleSpeak(e, article)}
+                            >
+                              {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    </a>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

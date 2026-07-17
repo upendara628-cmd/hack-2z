@@ -180,7 +180,7 @@ const AiPresenter = () => {
         // Trigger avatar talk after WebRTC stabilizes
         setTimeout(async () => {
           try {
-            await manager.talk('Hello! I am Emma, your AI News Presenter from The Meridian.');
+            await manager.talk('Hello! I am Emma, your AI News Presenter from Truth Lens.');
             console.log('[D-ID] Avatar talk triggered');
           } catch (e) {
             console.warn('[D-ID] Initial talk failed:', e.message);
@@ -206,7 +206,7 @@ const AiPresenter = () => {
     // ElevenLabs voice works immediately — no D-ID dependency
     setTimeout(async () => {
       setConnectionStatus('Emma is ready');
-      await speakWithElevenLabs('Hello! I am Emma, your AI News Presenter from The Meridian. You can ask me to read the daily briefing or type any question to chat!');
+      await speakWithElevenLabs('Hello! I am Emma, your AI News Presenter from Truth Lens. You can ask me to read the daily briefing or type any question to chat!');
     }, 400);
   };
 
@@ -224,12 +224,12 @@ const AiPresenter = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/news?keyword=general`);
       const articles = await response.json();
-      let briefingText = 'Welcome to your Meridian Daily Briefing. Here are the top stories. ';
+      let briefingText = 'Welcome to your Truth Lens Daily Briefing. Here are the top stories. ';
       if (articles?.length > 0) {
         articles.slice(0, 3).forEach((art, index) => {
           briefingText += `Story ${index + 1}: ${art.title}. `;
         });
-        briefingText += "That concludes today's headlines. Stay informed with The Meridian!";
+        briefingText += "That concludes today's headlines. Stay informed with Truth Lens!";
       } else {
         briefingText += 'We are experiencing difficulty retrieving the live news feed. Please try again shortly.';
       }

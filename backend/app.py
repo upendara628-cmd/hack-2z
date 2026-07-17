@@ -298,6 +298,9 @@ def get_news():
     keyword = request.args.get('keyword', '').strip().lower()
     country = request.args.get('country', '').strip().lower()
 
+    if keyword == 'politics':
+        keyword = 'bjp congress politics'
+
     if country:
         cache_key = f"country:{country}"
     elif keyword:
@@ -414,9 +417,59 @@ def get_news():
         seen_titles.add(title_norm)
         merged_articles.append(art)
 
-    # Fallback if all APIs failed
+    # Live scrape Google News RSS feed if all APIs failed
     if not merged_articles:
-        print("All APIs returned no articles. Serving fallback mock articles.")
+        print("All APIs returned no articles. Scraping live Google News RSS search feed...")
+        try:
+            from urllib.parse import quote
+            import xml.etree.ElementTree as ET
+            import re
+
+            query = keyword if keyword else (country if country else "world")
+            rss_url = f"https://news.google.com/rss/search?q={quote(query)}&hl=en-US&gl=US&ceid=US:en"
+            
+            response = requests.get(rss_url, verify=False, timeout=10)
+            if response.status_code == 200:
+                root = ET.fromstring(response.content)
+                for item in root.findall(".//item"):
+                    title = item.find("title").text if item.find("title") is not None else ""
+                    link = item.find("link").text if item.find("link") is not None else "#"
+                    pub_date = item.find("pubDate").text if item.find("pubDate") is not None else "Recent"
+                    
+                    source_name = "Google News"
+                    if " - " in title:
+                        parts = title.split(" - ")
+                        title = " - ".join(parts[:-1])
+                        source_name = parts[-1]
+
+                    desc = item.find("description").text if item.find("description") is not None else ""
+                    if desc:
+                        desc = re.sub(r'<[^>]*>', '', desc)
+                    
+                    raw_articles.append({
+                        "source": source_name,
+                        "id": link,
+                        "title": title,
+                        "description": desc if desc else title,
+                        "url": link,
+                        "image": "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop",
+                        "author": source_name,
+                        "time": pub_date[:16] if pub_date else "Recent"
+                    })
+
+                seen_titles = set()
+                for art in raw_articles:
+                    title_norm = art["title"].strip().lower() if art["title"] else ""
+                    if not title_norm or title_norm in seen_titles:
+                        continue
+                    seen_titles.add(title_norm)
+                    merged_articles.append(art)
+        except Exception as e:
+            print(f"[Google News RSS Scrape error] {e}")
+
+    # Fallback if even live scraping returned nothing
+    if not merged_articles:
+        print("All APIs and live scraping failed. Serving fallback mock articles.")
         fallback_data = get_fallback_articles(keyword if keyword else country)
         return jsonify(fallback_data)
 
@@ -531,6 +584,46 @@ def chat():
         return jsonify({"response": response_text})
     except Exception as e:
         return jsonify({"response": f"I encountered an error: {e}"})
+
+@app.route('/api/assistant', methods=['POST'])
+def assistant_chat():
+    data = request.json or {}
+    message = data.get("message", "")
+    history = data.get("history", [])
+
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+
+    if not client:
+        return jsonify({"response": "I'm sorry, my AI backend is not active. Please check your GROQ_API_KEY."})
+
+    try:
+        messages = [
+            {
+                "role": "system",
+                "content": "You are Nexus, a highly intelligent, helpful, and premium personal AI assistant built into The Meridian. You help the user analyze news trends, answer general queries, draft reports, explain complex world events, and assist with personal productivity. Keep your tone professional, articulate, and insightful. You are allowed to write detailed, structured, and formatted markdown responses."
+            }
+        ]
+
+        for msg in history:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role in ["user", "assistant"]:
+                messages.append({"role": role, "content": content})
+
+        messages.append({"role": "user", "content": message})
+
+        chat_completion = client.chat.completions.create(
+            messages=messages,
+            model="llama-3.1-8b-instant",
+            temperature=0.7,
+        )
+        response_text = chat_completion.choices[0].message.content
+        return jsonify({"response": response_text})
+    except Exception as e:
+        print(f"[Assistant error] {e}")
+        return jsonify({"response": f"I encountered an error: {e}"})
+
 
 import base64
 
@@ -659,6 +752,155 @@ def did_destroy():
             return jsonify({"ok": True}), response.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/livekit-token', methods=['POST'])
+def get_livekit_token():
+    data = request.json or {}
+    room_name = data.get("roomName", "default-room")
+    participant_name = data.get("participantName", "user")
+    
+    api_key = (os.environ.get("LIVEKIT_API_KEY") or "").strip('"').strip("'")
+    api_secret = (os.environ.get("LIVEKIT_API_SECRET") or "").strip('"').strip("'")
+    server_url = (os.environ.get("LIVEKIT_URL") or "wss://ai-0aqosfgx.livekit.cloud").strip('"').strip("'")
+    
+    if not api_key or not api_secret:
+        # Fallback to values from my-agent config if not explicitly set
+        api_key = "APIqVVRjC8ZVqn3"
+        api_secret = "elXjinoB4C1h2Ep0rfcZWQtnU2pbauhfysDzbTcsfuGA"
+        
+    try:
+        from livekit import api
+        token = api.AccessToken(api_key, api_secret)
+        token.with_grants(api.VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True
+        ))
+        token.with_identity(participant_name)
+        
+        # Configure automatic dispatch of our my-agent assistant on room connection
+        token.with_room_config(api.RoomConfiguration(
+            agents=[
+                api.RoomAgentDispatch(
+                    agent_name="my-agent"
+                )
+            ]
+        ))
+        
+        return jsonify({
+            "token": token.to_jwt(),
+            "serverUrl": server_url
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/local-news', methods=['GET'])
+def get_local_news():
+    location = request.args.get("location", "Hyderabad").strip()
+    language = request.args.get("language", "telugu").strip().lower()
+
+    articles = []
+
+    try:
+        import xml.etree.ElementTree as ET
+        import re
+        from urllib.parse import quote
+
+        if language == "telugu":
+            query = f"{location} site:sakshi.com OR site:tv9telugu.com"
+            rss_url = f"https://news.google.com/rss/search?q={quote(query)}&hl=te&gl=IN&ceid=IN:te"
+        else:
+            query = f"{location}"
+            rss_url = f"https://news.google.com/rss/search?q={quote(query)}&hl=en-IN&gl=IN&ceid=IN:en"
+
+        response = requests.get(rss_url, verify=False, timeout=10)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            for item in root.findall('.//item'):
+                title = item.find('title').text if item.find('title') is not None else ""
+                url = item.find('link').text if item.find('link') is not None else "#"
+                pub_date = item.find('pubDate').text if item.find('pubDate') is not None else ""
+                
+                if " - " in title:
+                    title, source_name_parsed = title.rsplit(" - ", 1)
+                else:
+                    source_name_parsed = "Local News"
+
+                description = ""
+                image_url = ""
+                desc_el = item.find('description')
+                if desc_el is not None and desc_el.text:
+                    # Parse image from RSS description HTML if available
+                    img_match = re.search(r'<img[^>]+src="([^"]+)"', desc_el.text)
+                    if img_match:
+                        image_url = img_match.group(1)
+                    
+                    # Clean up description html tags
+                    description = re.sub(r'<[^>]*>', '', desc_el.text)
+                    if len(description) > 300:
+                        description = description[:297] + "..."
+
+                if "sakshi.com" in url:
+                    source_name = "Sakshi"
+                elif "tv9telugu.com" in url:
+                    source_name = "TV9 Telugu"
+                else:
+                    source_name = source_name_parsed or "Local News"
+
+                if not image_url or not image_url.startswith("http"):
+                    image_pool = [
+                        "1504711434969-e33886168f5c", # Newspaper pile
+                        "1495020689067-958852a6565d", # Newspapers on table
+                        "1585829365295-ab7cd400c167", # Reading newspaper
+                        "1505373877841-8d25f7d46678", # Broadcasting studio
+                        "1451187580459-43490279c0fa", # Tech globe
+                        "1526470608268-f674ce90ebd4", # Studio cameras
+                        "1508921912186-1d1a45ebb3c1", # Charminar India
+                        "1581091226825-a6a2a5aee158", # Engineering lab
+                        "1518770660439-4636190af475", # Chip
+                        "1460925895917-afdab827c52f", # Financial charts
+                        "1516321318423-f06f85e504b3", # Tablet reading
+                        "1529107386315-e1a2ed48a620", # Government building
+                        "1447069387593-a5de0862481e", # Vintage printing press
+                        "1557804506-669a67965ba0"  # Politics meeting
+                    ]
+                    val = sum(ord(c) for c in title)
+                    img_id = image_pool[val % len(image_pool)]
+                    image_url = f"https://images.unsplash.com/photo-{img_id}?w=600&h=400&fit=crop"
+
+                articles.append({
+                    "id": url,
+                    "title": title,
+                    "description": description or f"Latest local news update from {source_name} in {location}.",
+                    "url": url,
+                    "image": image_url,
+                    "author": source_name,
+                    "time": pub_date,
+                    "category": "LOCAL",
+                    "source": source_name,
+                    "bias_tone": "Neutral",
+                    "bias_analysis": ["Analyzing political framing..."],
+                    "sources_used": ["Google News RSS"]
+                })
+        
+        articles = articles[:8]
+
+        # Analyze bias using Groq for the top 3 articles
+        for i in range(min(3, len(articles))):
+            art = articles[i]
+            try:
+                bias_report = analyze_article_bias(art["title"], art["description"])
+                art["bias_tone"] = bias_report["tone"]
+                art["bias_analysis"] = bias_report["analysis"]
+            except Exception as e:
+                print(f"Error in local bias analysis: {e}")
+
+        return jsonify(articles)
+    except Exception as e:
+        print(f"Error in local news endpoint: {e}")
+        return jsonify(get_fallback_articles(location)), 200
 
 def get_fallback_articles(topic="world"):
     return [

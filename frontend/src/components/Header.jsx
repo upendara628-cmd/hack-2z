@@ -69,13 +69,15 @@ const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory, u
       <div className="header-top">
         <div className="header-container">
           <div className="logo" style={{ cursor: 'pointer' }} onClick={() => onPageChange('home')}>
-            THE MERIDIAN
+            TRUTH LENS
           </div>
           <nav className="main-nav">
             <a href="#" className={`nav-link ${currentPage === 'home' ? 'active' : ''}`}
               onClick={e => { e.preventDefault(); onPageChange('home'); }}>Home</a>
             <a href="#" className={`nav-link ${currentPage === 'ai-avatar' ? 'active' : ''}`}
               onClick={e => { e.preventDefault(); onPageChange('ai-avatar'); }}>AI Presenter</a>
+            <a href="#" className={`nav-link ${currentPage === 'personal-assistant' ? 'active' : ''}`}
+              onClick={e => { e.preventDefault(); onPageChange('personal-assistant'); }}>AI Assistant</a>
             <a href="#" className={`nav-link ${currentPage === 'about' ? 'active' : ''}`}
               onClick={e => { e.preventDefault(); onPageChange('about'); }}>About</a>
             <button className="nav-user-profile" onClick={() => onPageChange('dashboard')}

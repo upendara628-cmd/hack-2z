@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
 
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
@@ -60,40 +60,80 @@ const FeaturedArticle = () => {
       });
   }, []);
 
+  const audioRef = useRef(null);
+
   useEffect(() => {
     return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       window.speechSynthesis.cancel();
     };
   }, []);
 
-  const handleSpeakClick = (e) => {
+  const handleSpeakClick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
 
     if (speaking) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       window.speechSynthesis.cancel();
       setSpeaking(false);
     } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       window.speechSynthesis.cancel();
       setSpeaking(true);
       
       const targetArticle = article || currentArticle;
       const cleanDesc = targetArticle.description ? targetArticle.description.replace(/<[^>]*>/g, '') : '';
       const textToSpeak = `${targetArticle.title}. ${cleanDesc}`;
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      
-      const voices = window.speechSynthesis.getVoices();
-      const premiumVoice = voices.find(v => 
-        v.name.includes('Google') && v.lang.startsWith('en') || 
-        v.name.includes('Natural') && v.lang.startsWith('en') ||
-        v.lang.startsWith('en-US')
-      );
-      if (premiumVoice) utterance.voice = premiumVoice;
 
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
-      
-      window.speechSynthesis.speak(utterance);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: textToSpeak })
+        });
+        
+        if (!response.ok) throw new Error('ElevenLabs TTS failed');
+        
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        
+        audio.onended = () => {
+          setSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.onerror = () => {
+          setSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        
+        await audio.play();
+      } catch (err) {
+        console.warn('ElevenLabs TTS failed, falling back to browser SpeechSynthesis:', err);
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        const voices = window.speechSynthesis.getVoices();
+        const premiumVoice = voices.find(v => 
+          v.name.includes('Google') && v.lang.startsWith('en') || 
+          v.name.includes('Natural') && v.lang.startsWith('en') ||
+          v.lang.startsWith('en-US')
+        );
+        if (premiumVoice) utterance.voice = premiumVoice;
+
+        utterance.onend = () => setSpeaking(false);
+        utterance.onerror = () => setSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      }
     }
   };
 

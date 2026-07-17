@@ -12,7 +12,25 @@ const SearchView = ({ query, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTime, setSearchTime] = useState(0);
+  const [biasStats, setBiasStats] = useState({ left: 0, right: 0, neutral: 0 });
   const abortRef = useRef(null);
+
+  const calculateBiasStats = (articleList) => {
+    if (articleList.length === 0) return;
+    let left = 0, right = 0, neutral = 0;
+    articleList.forEach(art => {
+      const tone = (art.bias_tone || 'neutral').toLowerCase();
+      if (tone.includes('left')) left++;
+      else if (tone.includes('right')) right++;
+      else neutral++;
+    });
+    const total = articleList.length;
+    setBiasStats({
+      left: Math.round((left / total) * 100),
+      right: Math.round((right / total) * 100),
+      neutral: Math.round((neutral / total) * 100)
+    });
+  };
 
   useEffect(() => {
     if (!query) return;
@@ -29,7 +47,9 @@ const SearchView = ({ query, onBack }) => {
     })
       .then(r => r.json())
       .then(data => {
-        setArticles(Array.isArray(data) ? data : []);
+        const articleList = Array.isArray(data) ? data : [];
+        setArticles(articleList);
+        calculateBiasStats(articleList);
         setSearchTime(((performance.now() - t0) / 1000).toFixed(2));
         setLoading(false);
       })
@@ -64,6 +84,48 @@ const SearchView = ({ query, onBack }) => {
           </div>
         </div>
       </div>
+
+      {/* Media Bias Split Panel */}
+      {!loading && !error && articles.length > 0 && (
+        <div className="chart-panel" style={{ marginBottom: '30px' }}>
+          <h2 className="panel-title">📊 Media Bias Split inside search results for "{query}"</h2>
+          
+          <div className="chart-container-visual">
+            {/* Left Leaning Bar */}
+            <div className="chart-bar-row">
+              <div className="chart-bar-label">
+                <span>Left-Leaning</span>
+                <span>{biasStats.left}%</span>
+              </div>
+              <div className="chart-bar-bg">
+                <div className="chart-bar-fill left-leaning" style={{ width: `${biasStats.left}%` }}></div>
+              </div>
+            </div>
+
+            {/* Neutral Bar */}
+            <div className="chart-bar-row">
+              <div className="chart-bar-label">
+                <span>Neutral / Balanced</span>
+                <span>{biasStats.neutral}%</span>
+              </div>
+              <div className="chart-bar-bg">
+                <div className="chart-bar-fill neutral" style={{ width: `${biasStats.neutral}%` }}></div>
+              </div>
+            </div>
+
+            {/* Right Leaning Bar */}
+            <div className="chart-bar-row">
+              <div className="chart-bar-label">
+                <span>Right-Leaning</span>
+                <span>{biasStats.right}%</span>
+              </div>
+              <div className="chart-bar-bg">
+                <div className="chart-bar-fill right-leaning" style={{ width: `${biasStats.right}%` }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading Skeletons */}
       {loading && (
@@ -129,7 +191,7 @@ const SearchView = ({ query, onBack }) => {
           </div>
 
           <div className="search-footer-note">
-            <p>🤖 All articles analyzed by Groq Llama-3.1 for political bias · Sources: CurrentsAPI · NewsData.io · GNews</p>
+            <p>🤖 All articles analyzed by Groq Llama-3.1 for political bias · Sources: CurrentsAPI · NewsData.io · GNews · Google News RSS</p>
           </div>
         </>
       )}

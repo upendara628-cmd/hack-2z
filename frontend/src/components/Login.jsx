@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
+import SpecularButton from './SpecularButton';
 
 const Login = ({ onLogin }) => {
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
@@ -197,7 +198,7 @@ const Login = ({ onLogin }) => {
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
               </svg>
             </div>
-            <h1 className="login-brand-title">THE <span className="highlight-brand">MERIDIAN</span></h1>
+            <h1 className="login-brand-title">TRUTH <span className="highlight-brand">LENS</span></h1>
             <p className="login-subtitle">
               {mode === 'login' ? 'Welcome back — sign in to continue' : 'Create your account to get started'}
             </p>
@@ -269,13 +270,28 @@ const Login = ({ onLogin }) => {
               </div>
             )}
 
-            <button type="submit" className="login-submit-button" disabled={isLoading}>
+            <SpecularButton
+              type="submit"
+              className="login-submit-button"
+              disabled={isLoading}
+              size="md"
+              radius={12}
+              tint="#c41e3a"
+              tintOpacity={1}
+              textColor="#ffffff"
+              lineColor="#ffffff"
+              baseColor="#9d172d"
+              intensity={1.2}
+              thickness={1.5}
+              followMouse={true}
+              proximity={180}
+            >
               {isLoading ? (
                 <span className="login-spinner">⏳ {mode === 'login' ? 'Signing in...' : 'Creating account...'}</span>
               ) : (
                 mode === 'login' ? 'Sign In' : 'Create Account'
               )}
-            </button>
+            </SpecularButton>
           </form>
 
           <div className="login-toggle-container">
@@ -299,7 +315,7 @@ const Login = ({ onLogin }) => {
           </div>
         </div>
 
-        <p className="login-footer-text">© {new Date().getFullYear()} The Meridian. All rights reserved.</p>
+        <p className="login-footer-text">© {new Date().getFullYear()} Truth Lens. All rights reserved.</p>
       </div>
     </div>
   );
