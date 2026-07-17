@@ -37,10 +37,70 @@ except Exception as e:
     print(f"Error initializing Groq client: {e}")
     client = None
 
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
 # Simple in-memory cache to prevent hitting API limits and ensure instantaneous UI updates
 # Format: { keyword: { "timestamp": float, "data": [...] } }
 CACHE_EXPIRY_SECONDS = 600  # 10 minutes cache
 news_cache = {}
+
+def get_supabase_cache(cache_key):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+    from datetime import datetime, timedelta, timezone
+    expiry_time = (datetime.now(timezone.utc) - timedelta(seconds=CACHE_EXPIRY_SECONDS)).isoformat()
+    
+    url = f"{SUPABASE_URL}/rest/v1/news_cache?cache_key=eq.{cache_key}&created_at=gt.{expiry_time}&select=*"
+    try:
+        response = requests.get(url, headers=headers, verify=False, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                print(f"Serving cached news from Supabase for: {cache_key}")
+                return data
+        return None
+    except Exception as e:
+        print(f"Error querying Supabase cache: {e}")
+        return None
+
+def save_supabase_cache(cache_key, articles):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates"
+    }
+    
+    payload = []
+    for art in articles:
+        payload.append({
+            "id": art["id"],
+            "title": art["title"],
+            "description": art["description"],
+            "url": art["url"],
+            "image": art["image"],
+            "author": art["author"],
+            "time": art["time"],
+            "category": art["category"],
+            "source": art["source"],
+            "bias_tone": art["bias_tone"],
+            "bias_analysis": art["bias_analysis"],
+            "cache_key": cache_key
+        })
+        
+    try:
+        response = requests.post(f"{SUPABASE_URL}/rest/v1/news_cache", headers=headers, json=payload, verify=False, timeout=5)
+        if response.status_code not in [200, 201]:
+            print(f"Supabase cache save warning (status {response.status_code}): {response.text}")
+    except Exception as e:
+        print(f"Error writing to Supabase cache: {e}")
 
 def analyze_article_bias(title, description):
     """
@@ -140,12 +200,17 @@ def get_news():
         cache_key = "keyword:world"
         keyword = "world"
 
-    # 1. Check cache first
+    # 1. Check Supabase cache first
+    db_cached = get_supabase_cache(cache_key)
+    if db_cached:
+        return jsonify(db_cached)
+
+    # Fallback to local memory cache
     now = time.time()
     if cache_key in news_cache:
         cached_item = news_cache[cache_key]
         if now - cached_item['timestamp'] < CACHE_EXPIRY_SECONDS:
-            print(f"Serving cached news for key: {cache_key}")
+            print(f"Serving cached news from local memory for key: {cache_key}")
             return jsonify(cached_item['data'])
 
     raw_articles = []
@@ -271,8 +336,47 @@ def get_news():
         "timestamp": now,
         "data": processed_articles
     }
+    save_supabase_cache(cache_key, processed_articles)
 
     return jsonify(processed_articles)
+
+@app.route('/api/location-stats', methods=['POST'])
+def save_location_stats():
+    data = request.json
+    if not data:
+        return jsonify({"status": "error", "message": "No data provided"}), 400
+        
+    location_name = data.get("location_name", "Unknown")
+    country_code = data.get("country_code", "unknown")
+    coords = data.get("coords", {})
+    bias_stats = data.get("bias_stats", {})
+    
+    # Save to Supabase if configured
+    if SUPABASE_URL and SUPABASE_KEY:
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "location_name": location_name,
+            "country_code": country_code,
+            "latitude": coords.get("lat") if coords else None,
+            "longitude": coords.get("lon") if coords else None,
+            "left_percentage": bias_stats.get("left", 0),
+            "right_percentage": bias_stats.get("right", 0),
+            "neutral_percentage": bias_stats.get("neutral", 0)
+        }
+        try:
+            response = requests.post(f"{SUPABASE_URL}/rest/v1/user_location_stats", headers=headers, json=payload, verify=False, timeout=5)
+            if response.status_code in [200, 201]:
+                print(f"Successfully logged location stats to Supabase for {location_name}")
+            else:
+                print(f"Failed to log location stats (status {response.status_code}): {response.text}")
+        except Exception as e:
+            print(f"Error logging to Supabase: {e}")
+            
+    return jsonify({"status": "success"})
 
 def get_fallback_articles(keyword):
     """
