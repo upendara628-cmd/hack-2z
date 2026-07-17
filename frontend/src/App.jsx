@@ -12,6 +12,7 @@ import SearchView from './components/SearchView.jsx';
 import AiPresenter from './components/AiPresenter.jsx';
 import PersonalAssistant from './components/PersonalAssistant.jsx';
 import LocalNewsSection from './components/LocalNewsSection.jsx';
+import GlobeView from './components/GlobeView.jsx';
 import Login from './components/Login.jsx';
 import './App.css';
 
@@ -119,6 +120,8 @@ function App() {
       {currentPage === 'ai-avatar' && <AiPresenter />}
 
       {currentPage === 'personal-assistant' && <PersonalAssistant />}
+
+      {currentPage === 'globe' && <GlobeView />}
 
       {currentPage === 'about' && (
         <div className="dashboard-container">

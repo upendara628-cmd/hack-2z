@@ -78,6 +78,8 @@ const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory, u
               onClick={e => { e.preventDefault(); onPageChange('ai-avatar'); }}>AI Presenter</a>
             <a href="#" className={`nav-link ${currentPage === 'personal-assistant' ? 'active' : ''}`}
               onClick={e => { e.preventDefault(); onPageChange('personal-assistant'); }}>AI Assistant</a>
+            <a href="#" className={`nav-link globe-nav-link ${currentPage === 'globe' ? 'active' : ''}`}
+              onClick={e => { e.preventDefault(); onPageChange('globe'); }}>🌍 Globe</a>
             <a href="#" className={`nav-link ${currentPage === 'about' ? 'active' : ''}`}
               onClick={e => { e.preventDefault(); onPageChange('about'); }}>About</a>
             <button className="nav-user-profile" onClick={() => onPageChange('dashboard')}
