@@ -793,8 +793,12 @@ def get_livekit_token():
             "token": token.to_jwt(),
             "serverUrl": server_url
         })
+    except ImportError:
+        print("[LiveKit] livekit package not installed. Run: pip install livekit livekit-api")
+        return jsonify({"error": "LiveKit voice agent not available in this environment. The text chat is fully functional."}), 503
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"[LiveKit token error] {e}")
+        return jsonify({"error": f"LiveKit error: {str(e)}"}), 500
 
 @app.route('/api/local-news', methods=['GET'])
 def get_local_news():

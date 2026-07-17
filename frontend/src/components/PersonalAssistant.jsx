@@ -75,7 +75,10 @@ const PersonalAssistant = () => {
         })
       });
       
-      if (!res.ok) throw new Error('Failed to get token');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to get token');
+      }
       const { token, serverUrl } = await res.json();
       
       setCallStatus('Connecting to LiveKit...');
@@ -211,8 +214,9 @@ const PersonalAssistant = () => {
       const aiResponse = data.response || 'No response received.';
       setMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
       
+      // Speak without blocking — never let TTS errors crash the chat
       if (!isMuted) {
-        speakResponse(aiResponse);
+        speakResponse(aiResponse).catch(() => {});
       }
     } catch (error) {
       console.error('Error fetching assistant response:', error);
