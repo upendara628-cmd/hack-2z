@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -42,9 +43,10 @@ const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
 const FeaturedArticle = () => {
   const [article, setArticle] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/news?keyword=world')
+    fetch(`${API_BASE_URL}/api/news?keyword=world`)
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
@@ -57,6 +59,43 @@ const FeaturedArticle = () => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleSpeakClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+    } else {
+      window.speechSynthesis.cancel();
+      setSpeaking(true);
+      
+      const targetArticle = article || currentArticle;
+      const cleanDesc = targetArticle.description ? targetArticle.description.replace(/<[^>]*>/g, '') : '';
+      const textToSpeak = `${targetArticle.title}. ${cleanDesc}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      
+      const voices = window.speechSynthesis.getVoices();
+      const premiumVoice = voices.find(v => 
+        v.name.includes('Google') && v.lang.startsWith('en') || 
+        v.name.includes('Natural') && v.lang.startsWith('en') ||
+        v.lang.startsWith('en-US')
+      );
+      if (premiumVoice) utterance.voice = premiumVoice;
+
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => setSpeaking(false);
+      
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   if (loading) {
     return (
@@ -90,7 +129,7 @@ const FeaturedArticle = () => {
   return (
     <section className="featured-section">
       <a href={currentArticle.url} target="_blank" rel="noopener noreferrer" className="featured-article-link" style={{ textDecoration: 'none', color: 'inherit' }}>
-        <div className="featured-article">
+        <div className={`featured-article ${speaking ? 'article-card-speaking-highlight' : ''}`}>
           <div className="featured-image">
             <img 
               src={currentArticle.image} 
@@ -110,10 +149,18 @@ const FeaturedArticle = () => {
               <span className="time">{currentArticle.time}</span>
             </div>
             
-            <BiasAnalysis 
-              biasTone={currentArticle.bias_tone} 
-              biasAnalysis={currentArticle.bias_analysis} 
-            />
+            <div className="speak-article-badge-row">
+              <BiasAnalysis 
+                biasTone={currentArticle.bias_tone} 
+                biasAnalysis={currentArticle.bias_analysis} 
+              />
+              <button 
+                className={`article-speak-btn ${speaking ? 'active-speaking' : ''}`}
+                onClick={handleSpeakClick}
+              >
+                {speaking ? '⏹️ Stop' : '🔊 Listen'}
+              </button>
+            </div>
           </div>
         </div>
       </a>

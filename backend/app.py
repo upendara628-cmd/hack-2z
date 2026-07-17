@@ -473,6 +473,169 @@ def get_fallback_articles(keyword):
             }
         ]
 
+import base64
+DID_API_KEY = os.environ.get("DID_API_KEY", "MjUxMWNzMDIwNTk0QG1hbGxhcmVkZHl1bml2ZXJzaXR5LmFjLmlu:8pUa_Gi_zxZGI4GlGyDZV")
+DID_AUTH_HEADER = f"Basic {base64.b64encode(DID_API_KEY.encode()).decode()}"
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    data = request.json or {}
+    message = data.get("message", "")
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+        
+    if not client:
+        return jsonify({"response": "I'm sorry, my AI backend is not active. But here is standard advice: always verify your sources!"})
+        
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a professional AI news presenter for The Meridian. Keep your responses engaging, articulate, and under 3 sentences so they are suitable for speaking."
+                },
+                {
+                    "role": "user",
+                    "content": message
+                }
+            ],
+            model="llama-3.1-8b-instant",
+            temperature=0.7,
+        )
+        response_text = chat_completion.choices[0].message.content
+        return jsonify({"response": response_text})
+    except Exception as e:
+        return jsonify({"response": f"I encountered an error querying the model: {e}"})
+
+@app.route('/api/did-stream/create', methods=['POST'])
+def did_create():
+    data = request.json or {}
+    source_url = data.get("source_url", "https://create-images-results.d-id.com/DefaultPresenters/Emma_f/image.png")
+    
+    headers = {
+        "Authorization": DID_AUTH_HEADER,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "source_url": source_url
+    }
+    try:
+        response = requests.post("https://api.d-id.com/talks/streams", headers=headers, json=payload, verify=False, timeout=10)
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/did-stream/sdp', methods=['POST'])
+def did_sdp():
+    data = request.json or {}
+    stream_id = data.get("stream_id")
+    session_id = data.get("session_id")
+    answer = data.get("answer")
+    
+    if not stream_id or not session_id or not answer:
+        return jsonify({"error": "Missing parameters"}), 400
+        
+    headers = {
+        "Authorization": DID_AUTH_HEADER,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "answer": answer,
+        "session_id": session_id
+    }
+    try:
+        response = requests.post(f"https://api.d-id.com/talks/streams/{stream_id}/sdp", headers=headers, json=payload, verify=False, timeout=10)
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/did-stream/ice', methods=['POST'])
+def did_ice():
+    data = request.json or {}
+    stream_id = data.get("stream_id")
+    session_id = data.get("session_id")
+    candidate = data.get("candidate")
+    sdpMid = data.get("sdpMid")
+    sdpMLineIndex = data.get("sdpMLineIndex")
+    
+    if not stream_id or not session_id or not candidate:
+        return jsonify({"error": "Missing parameters"}), 400
+        
+    headers = {
+        "Authorization": DID_AUTH_HEADER,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "candidate": candidate,
+        "sdpMid": sdpMid,
+        "sdpMLineIndex": sdpMLineIndex,
+        "session_id": session_id
+    }
+    try:
+        response = requests.post(f"https://api.d-id.com/talks/streams/{stream_id}/ice", headers=headers, json=payload, verify=False, timeout=10)
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/did-stream/talk', methods=['POST'])
+def did_talk():
+    data = request.json or {}
+    stream_id = data.get("stream_id")
+    session_id = data.get("session_id")
+    text = data.get("text", "")
+    
+    if not stream_id or not session_id or not text:
+        return jsonify({"error": "Missing parameters"}), 400
+        
+    headers = {
+        "Authorization": DID_AUTH_HEADER,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "script": {
+            "type": "text",
+            "subtitles": "false",
+            "provider": {
+                "type": "microsoft",
+                "voice_id": "en-US-JennyNeural"
+            },
+            "input": text
+        },
+        "config": {
+            "fluent": "false",
+            "pad_audio": "0.0"
+        },
+        "session_id": session_id
+    }
+    try:
+        response = requests.post(f"https://api.d-id.com/talks/streams/{stream_id}", headers=headers, json=payload, verify=False, timeout=10)
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/did-stream/destroy', methods=['POST'])
+def did_destroy():
+    data = request.json or {}
+    stream_id = data.get("stream_id")
+    session_id = data.get("session_id")
+    
+    if not stream_id or not session_id:
+        return jsonify({"error": "Missing parameters"}), 400
+        
+    headers = {
+        "Authorization": DID_AUTH_HEADER,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "session_id": session_id
+    }
+    try:
+        response = requests.delete(f"https://api.d-id.com/talks/streams/{stream_id}", headers=headers, json=payload, verify=False, timeout=10)
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
-    # Running Flask app on port 5000
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    # Running Flask app on port from Railway or fallback
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)

@@ -8,11 +8,14 @@ import TrendingSection from './components/TrendingSection.jsx';
 import Footer from './components/Footer.jsx';
 import UserDashboard from './components/UserDashboard.jsx';
 import CategoryView from './components/CategoryView.jsx';
+import AiPresenter from './components/AiPresenter.jsx';
+import Login from './components/Login.jsx';
 import './App.css';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [user, setUser] = useState(null);
 
   const handleCategorySelect = (cat) => {
     if (cat === 'world') {
@@ -28,6 +31,10 @@ function App() {
     setSelectedCategory(null); // Reset category when switching page
   };
 
+  if (!user) {
+    return <Login onLogin={(userData) => setUser(userData)} />;
+  }
+
   return (
     <div className="App">
       <Header 
@@ -35,6 +42,7 @@ function App() {
         onPageChange={handlePageChange} 
         onCategorySelect={handleCategorySelect}
         activeCategory={selectedCategory || (currentPage === 'home' ? 'world' : '')}
+        user={user}
       />
       
       {currentPage === 'home' && (
@@ -59,7 +67,11 @@ function App() {
       )}
 
       {currentPage === 'dashboard' && (
-        <UserDashboard />
+        <UserDashboard user={user} onSignOut={() => { setUser(null); setCurrentPage('home'); }} />
+      )}
+
+      {currentPage === 'ai-avatar' && (
+        <AiPresenter />
       )}
 
       {currentPage === 'about' && (
