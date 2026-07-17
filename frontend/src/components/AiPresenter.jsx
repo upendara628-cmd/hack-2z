@@ -6,20 +6,29 @@ const AiPresenter = () => {
   const videoRef = useRef(null);
   const streamManagerRef = useRef(null);
   const audioRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const didInitialized = useRef(false);
+
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [isSessionStarted, setIsSessionStarted] = useState(false);
-  const [useElevenLabs, setUseElevenLabs] = useState(true);  // Prefer ElevenLabs
-  const [useDID, setUseDID] = useState(false);               // D-ID status
+  const [useDID, setUseDID] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
-  const didInitialized = useRef(false);  // prevent double-init in StrictMode
-
-  const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState([
-    { sender: 'ai', text: 'Hello! I am Emma, your AI News Presenter. Click "Initialize" to start the session!' }
-  ]);
   const [isThinking, setIsThinking] = useState(false);
   const [currentSpeech, setCurrentSpeech] = useState('');
+
+  // Voice input state
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [micSupported, setMicSupported] = useState(false);
+
+  // Article reader state
+  const [articleText, setArticleText] = useState('');
+  const [articleTab, setArticleTab] = useState('voice'); // 'voice' | 'article'
+
+  const [chatMessages, setChatMessages] = useState([
+    { sender: 'ai', text: 'Hello! I am Emma, your AI News Presenter. Click "Initialize" to start, then hold the 🎤 mic button and speak your question — or paste any article for me to read!' }
+  ]);
   const [newsSources, setNewsSources] = useState(null);
   const chatEndRef = useRef(null);
 
@@ -28,74 +37,30 @@ const AiPresenter = () => {
   }, [chatMessages, isThinking]);
 
   useEffect(() => {
-    // Fetch which news websites we check
     fetch(`${API_BASE_URL}/api/news/sources`)
       .then(r => r.json())
       .then(data => setNewsSources(data))
       .catch(() => {});
+    // Check mic availability
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      setMicSupported(true);
+    }
   }, []);
 
   useEffect(() => {
     return () => {
       if (streamManagerRef.current) streamManagerRef.current.destroy().catch(() => {});
       if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if (recognitionRef.current) recognitionRef.current.abort();
       window.speechSynthesis.cancel();
     };
   }, []);
 
-  // ── ElevenLabs TTS ────────────────────────────────────────────
-  const speakWithElevenLabs = useCallback(async (text) => {
-    setCurrentSpeech(text);
-    setIsSpeaking(true);
-    setConnectionStatus('Speaking...');
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      });
-
-      if (!response.ok) {
-        throw new Error(`ElevenLabs TTS failed: ${response.status}`);
-      }
-
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-
-      if (audioRef.current) {
-        audioRef.current.pause();
-        URL.revokeObjectURL(audioRef.current.src);
-      }
-
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        setCurrentSpeech('');
-        setConnectionStatus(useDID ? 'Connected' : 'Emma is ready');
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        setCurrentSpeech('');
-        setConnectionStatus('Emma is ready');
-      };
-
-      await audio.play();
-    } catch (err) {
-      console.warn('[ElevenLabs] Failed, falling back to browser TTS:', err);
-      speakWithBrowserTTS(text);
-    }
-  }, [useDID]);
-
-  // ── Browser TTS fallback ───────────────────────────────────────
+  // ── ElevenLabs TTS ─────────────────────────────────────────────
   const speakWithBrowserTTS = useCallback((text) => {
     window.speechSynthesis.cancel();
     setCurrentSpeech(text);
     setIsSpeaking(true);
-
     const doSpeak = () => {
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
@@ -105,119 +70,193 @@ const AiPresenter = () => {
         v.lang === 'en-US'
       );
       if (preferred) utterance.voice = preferred;
-      utterance.rate = 0.92;
+      utterance.rate = 0.9;
       utterance.pitch = 1.05;
-      utterance.onstart = () => { setIsSpeaking(true); setConnectionStatus('Speaking (TTS)...'); };
       utterance.onend = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
       utterance.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); };
       window.speechSynthesis.speak(utterance);
     };
-
     if (window.speechSynthesis.getVoices().length > 0) doSpeak();
     else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; }
   }, []);
 
-  // ── Main speak function ────────────────────────────────────────
   const speakResponse = useCallback(async (text) => {
-    if (useElevenLabs) {
-      await speakWithElevenLabs(text);
-    } else {
+    setCurrentSpeech(text);
+    setIsSpeaking(true);
+    setConnectionStatus('Speaking...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!response.ok) throw new Error('TTS failed');
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      audio.onended = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); URL.revokeObjectURL(audioUrl); };
+      audio.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); };
+      await audio.play();
+    } catch (err) {
       speakWithBrowserTTS(text);
     }
-  }, [useElevenLabs, speakWithElevenLabs, speakWithBrowserTTS]);
+  }, [speakWithBrowserTTS]);
 
-  // ── D-ID init via useEffect so video element is rendered first ──
+  // ── D-ID init ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isSessionStarted) return;
     if (didInitialized.current) return;
     didInitialized.current = true;
-
     const initDID = async () => {
-      // videoRef.current is now guaranteed to be set
-      if (!videoRef.current) {
-        console.warn('[D-ID] video element not found after render');
-        return;
-      }
-      console.log('[D-ID] Starting — videoRef.current:', videoRef.current);
-
+      if (!videoRef.current) return;
       try {
-        const manager = new DIDStreamManager(
-          videoRef.current,
-          (status) => {
-            setConnectionStatus(status);
-            if (status === 'Connected' || status === 'Waiting for avatar...') {
-              setUseDID(true);
-            }
-          }
-        );
+        const manager = new DIDStreamManager(videoRef.current, (status) => {
+          setConnectionStatus(status);
+          if (status === 'Connected' || status === 'Waiting for avatar...') setUseDID(true);
+        });
         streamManagerRef.current = manager;
         await manager.connect();
         setUseDID(true);
-        console.log('[D-ID] Stream connected — polling for video readiness');
-
         let attempts = 0;
         const checkVideo = setInterval(() => {
           const vid = videoRef.current;
           attempts++;
-          if (vid) {
-            console.log(`[D-ID poll #${attempts}] srcObject=${!!vid.srcObject} readyState=${vid.readyState} paused=${vid.paused}`);
-            if (vid.srcObject && vid.readyState >= 2) {
-              clearInterval(checkVideo);
-              console.log('[D-ID] ✅ Video ready! Showing avatar');
-              vid.muted = false;
-              setVideoReady(true);
-              setConnectionStatus('Connected');
-            } else if (vid.srcObject && vid.paused) {
-              vid.play().catch(e => console.warn('[D-ID] Force play:', e));
-            }
-          }
-          if (attempts > 40) {
+          if (vid && vid.srcObject && vid.readyState >= 2) {
             clearInterval(checkVideo);
-            console.warn('[D-ID] Video not ready after 12s. readyState:', videoRef.current?.readyState);
+            vid.muted = false;
+            setVideoReady(true);
+            setConnectionStatus('Connected');
+          } else if (vid && vid.srcObject && vid.paused) {
+            vid.play().catch(() => {});
           }
+          if (attempts > 40) clearInterval(checkVideo);
         }, 300);
-
-        // Trigger avatar talk after WebRTC stabilizes
-        setTimeout(async () => {
-          try {
-            await manager.talk('Hello! I am Emma, your AI News Presenter from Truth Lens.');
-            console.log('[D-ID] Avatar talk triggered');
-          } catch (e) {
-            console.warn('[D-ID] Initial talk failed:', e.message);
-          }
-        }, 2000);
-
       } catch (err) {
-        console.warn('[D-ID] Avatar not available:', err.message);
         setUseDID(false);
         setVideoReady(false);
       }
     };
-
     initDID();
   }, [isSessionStarted]);
 
-  // ── Initialize session ─────────────────────────────────────────
+  // ── Session start ──────────────────────────────────────────────
   const handleStartSession = async () => {
-    setIsSessionStarted(true);       // triggers re-render → video element mounts
+    setIsSessionStarted(true);
     setConnectionStatus('Connecting...');
-    // D-ID starts in the useEffect above, after React renders the <video>
-
-    // ElevenLabs voice works immediately — no D-ID dependency
     setTimeout(async () => {
       setConnectionStatus('Emma is ready');
-      await speakWithElevenLabs('Hello! I am Emma, your AI News Presenter from Truth Lens. You can ask me to read the daily briefing or type any question to chat!');
+      await speakResponse('Hello! I am Emma, your AI News Presenter from Truth Lens. Hold the microphone button and speak your question, or paste an article for me to read aloud!');
     }, 400);
   };
 
   const handleStopSpeaking = () => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (recognitionRef.current) recognitionRef.current.abort();
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
+    setIsListening(false);
     setCurrentSpeech('');
-    setConnectionStatus(useDID ? 'Connected' : 'Emma is ready');
+    setConnectionStatus('Emma is ready');
   };
 
+  // ── Voice input (Web Speech API) ───────────────────────────────
+  const startListening = () => {
+    if (!micSupported || isThinking || isSpeaking) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    setIsListening(true);
+    setVoiceTranscript('');
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map(r => r[0].transcript)
+        .join('');
+      setVoiceTranscript(transcript);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      // Auto-send when speech ends
+      const finalTranscript = recognitionRef.current?._finalTranscript || voiceTranscript;
+      if (finalTranscript.trim()) handleSendVoiceMessage(finalTranscript.trim());
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      setVoiceTranscript('');
+    };
+    // Store transcript for use on end
+    recognition.onspeechend = () => {
+      recognition._finalTranscript = voiceTranscript;
+    };
+    recognition.start();
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current._finalTranscript = voiceTranscript;
+      recognitionRef.current.stop();
+    }
+  };
+
+  const handleSendVoiceMessage = useCallback(async (text) => {
+    if (!text.trim() || isThinking) return;
+    setChatMessages(prev => [...prev, { sender: 'user', text }]);
+    setVoiceTranscript('');
+    setIsThinking(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await response.json();
+      const aiResponse = data.response || 'I could not retrieve a reply. Please try again.';
+      setChatMessages(prev => [...prev, { sender: 'ai', text: aiResponse }]);
+      await speakResponse(aiResponse);
+    } catch (err) {
+      const errorMsg = "I'm having trouble connecting right now. Please try again.";
+      setChatMessages(prev => [...prev, { sender: 'ai', text: errorMsg }]);
+      await speakResponse(errorMsg);
+    } finally {
+      setIsThinking(false);
+    }
+  }, [isThinking, speakResponse]);
+
+  // ── Article Reader ─────────────────────────────────────────────
+  const handleReadArticle = async () => {
+    if (!articleText.trim() || isThinking) return;
+    setIsThinking(true);
+    const truncated = articleText.trim().slice(0, 1500);
+    setChatMessages(prev => [...prev, {
+      sender: 'user',
+      text: `📄 [Article submitted for reading]\n\n${truncated.slice(0, 120)}...`
+    }]);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Please give me a brief, clear spoken summary of this article in 3-4 sentences, as if you are a news presenter reading it on air:\n\n${truncated}`
+        })
+      });
+      const data = await response.json();
+      const aiResponse = data.response || 'Unable to summarize the article.';
+      setChatMessages(prev => [...prev, { sender: 'ai', text: `📰 Article Summary:\n\n${aiResponse}` }]);
+      await speakResponse(aiResponse);
+    } catch (err) {
+      const msg = "I'm having trouble reading this article. Please check the backend connection.";
+      setChatMessages(prev => [...prev, { sender: 'ai', text: msg }]);
+      await speakResponse(msg);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  // ── Daily Briefing ─────────────────────────────────────────────
   const handleReadBriefing = async () => {
     if (isThinking) return;
     setIsThinking(true);
@@ -236,35 +275,9 @@ const AiPresenter = () => {
       setChatMessages(prev => [...prev, { sender: 'ai', text: briefingText }]);
       await speakResponse(briefingText);
     } catch (err) {
-      const msg = "I had trouble fetching today's briefing. Please check your connection.";
+      const msg = "I had trouble fetching today's briefing.";
       setChatMessages(prev => [...prev, { sender: 'ai', text: msg }]);
       await speakResponse(msg);
-    } finally {
-      setIsThinking(false);
-    }
-  };
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!chatInput.trim() || isThinking) return;
-    const userMessage = chatInput.trim();
-    setChatMessages(prev => [...prev, { sender: 'user', text: userMessage }]);
-    setChatInput('');
-    setIsThinking(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
-      });
-      const data = await response.json();
-      const aiResponse = data.response || 'I could not retrieve a reply. Please try again.';
-      setChatMessages(prev => [...prev, { sender: 'ai', text: aiResponse }]);
-      await speakResponse(aiResponse);
-    } catch (err) {
-      const errorMsg = "I'm having trouble connecting right now.";
-      setChatMessages(prev => [...prev, { sender: 'ai', text: errorMsg }]);
-      await speakResponse(errorMsg);
     } finally {
       setIsThinking(false);
     }
@@ -298,54 +311,42 @@ const AiPresenter = () => {
                 </div>
               ) : (
                 <>
-                  {/* Status bar */}
                   <div className="status-bubble-overlay">
                     <span className={`status-indicator-dot ${isOnline ? 'online' : 'connecting'} ${isSpeaking ? 'speaking-dot' : ''}`}></span>
                     {connectionStatus}
                     {useDID && videoReady && <span style={{ marginLeft: 6, fontSize: 10, color: '#34d399' }}>● Live Avatar</span>}
-                    {useElevenLabs && <span style={{ marginLeft: 6, fontSize: 10, color: '#a78bfa' }}>● EL Voice</span>}
+                    {!useDID && <span style={{ marginLeft: 6, fontSize: 10, color: '#a78bfa' }}>● EL Voice</span>}
                   </div>
 
-                  {/* D-ID video — always rendered, visibility toggled by videoReady */}
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="did-video-player"
-                    style={{ display: videoReady ? 'block' : 'none' }}
-                  />
+                  <video ref={videoRef} autoPlay playsInline muted className="did-video-player"
+                    style={{ display: videoReady ? 'block' : 'none' }} />
 
-                  {/* Fallback orb when D-ID not connected */}
                   {!videoReady && (
                     <div className="animated-fallback-presenter">
                       <div className="glowing-avatar-orb-outer">
                         <div className="glowing-avatar-orb-middle">
                           <div className={`glowing-avatar-orb-inner ${isSpeaking ? 'speaking' : ''}`}>
-                            <span className="avatar-face-icon">🎙️</span>
+                            <span className="avatar-face-icon">{isListening ? '👂' : isSpeaking ? '🎙️' : '🤖'}</span>
                           </div>
                         </div>
                       </div>
                       <div className="avatar-waveform-visualizer">
                         {Array.from({ length: 20 }).map((_, i) => (
-                          <div
-                            key={i}
-                            className={`waveform-bar ${isSpeaking ? 'animating' : ''}`}
-                            style={{ animationDelay: `${i * 0.04}s`, animationDuration: `${0.4 + (i % 5) * 0.08}s` }}
-                          />
+                          <div key={i}
+                            className={`waveform-bar ${(isSpeaking || isListening) ? 'animating' : ''}`}
+                            style={{ animationDelay: `${i * 0.04}s`, animationDuration: `${0.4 + (i % 5) * 0.08}s` }} />
                         ))}
                       </div>
                       <div className="emma-name-badge">
-                        <span className={`live-dot ${isSpeaking ? 'live' : ''}`}></span>
+                        <span className={`live-dot ${(isSpeaking || isListening) ? 'live' : ''}`}></span>
                         <span className="emma-badge-name">EMMA</span>
                         <span className="emma-badge-title">
-                          {isSpeaking ? 'Speaking via ElevenLabs AI' : 'AI Presenter · ElevenLabs Voice'}
+                          {isListening ? '👂 Listening...' : isSpeaking ? 'Speaking via ElevenLabs AI' : 'AI Presenter · ElevenLabs Voice'}
                         </span>
                       </div>
                     </div>
                   )}
 
-                  {/* Subtitle */}
                   {currentSpeech && (
                     <div className="subtitle-overlay">
                       <div className="subtitle-teleprompter">
@@ -358,7 +359,6 @@ const AiPresenter = () => {
               )}
             </div>
 
-            {/* Controls */}
             {isSessionStarted && (
               <div className="presenter-controls">
                 <button className="control-btn briefing-btn" onClick={handleReadBriefing}
@@ -366,13 +366,12 @@ const AiPresenter = () => {
                   📰 Read Daily Briefing
                 </button>
                 <button className="control-btn clear-btn" onClick={handleStopSpeaking}
-                  disabled={!isSpeaking}>
-                  🔇 Stop Speaking
+                  disabled={!isSpeaking && !isListening}>
+                  🔇 Stop
                 </button>
               </div>
             )}
 
-            {/* News Sources Info */}
             {newsSources && (
               <div className="news-sources-panel">
                 <h4 className="news-sources-title">📡 News Sources Checked</h4>
@@ -390,42 +389,134 @@ const AiPresenter = () => {
             )}
           </div>
 
-          {/* Right panel: Chat */}
+          {/* Right panel: Voice & Chat */}
           <div className="chat-dialog-panel">
-            <h3 className="dialog-title">Conversation Log</h3>
-            <div className="chat-message-history">
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`chat-message ${msg.sender}`}>
-                  <div className="message-header">
-                    <span className="message-sender-name">{msg.sender === 'ai' ? 'Presenter Emma' : 'You'}</span>
-                  </div>
-                  <div className="message-bubble">{msg.text}</div>
-                </div>
-              ))}
-              {isThinking && (
-                <div className="chat-message ai thinking">
-                  <div className="message-bubble typing-dots">
-                    <span>.</span><span>.</span><span>.</span>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
+            {/* Tab switcher */}
+            <div className="emma-tab-switcher">
+              <button
+                className={`emma-tab-btn ${articleTab === 'voice' ? 'active' : ''}`}
+                onClick={() => setArticleTab('voice')}>
+                🎤 Voice Chat
+              </button>
+              <button
+                className={`emma-tab-btn ${articleTab === 'article' ? 'active' : ''}`}
+                onClick={() => setArticleTab('article')}>
+                📄 Read Article
+              </button>
             </div>
 
-            <form onSubmit={handleSendMessage} className="chat-input-row">
-              <input
-                type="text"
-                className="presenter-chat-input"
-                placeholder="Ask a question about today's news..."
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                disabled={!isSessionStarted || isThinking}
-              />
-              <button type="submit" className="presenter-chat-send"
-                disabled={!isSessionStarted || isThinking || !chatInput.trim()}>
-                Send
-              </button>
-            </form>
+            {/* Voice Tab */}
+            {articleTab === 'voice' && (
+              <>
+                <div className="chat-message-history">
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={`chat-message ${msg.sender}`}>
+                      <div className="message-header">
+                        <span className="message-sender-name">{msg.sender === 'ai' ? 'Presenter Emma' : 'You'}</span>
+                      </div>
+                      <div className="message-bubble" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                    </div>
+                  ))}
+                  {isThinking && (
+                    <div className="chat-message ai thinking">
+                      <div className="message-bubble typing-dots">
+                        <span>.</span><span>.</span><span>.</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Voice Input Area */}
+                <div className="voice-input-section">
+                  {/* Live transcript display */}
+                  {(isListening || voiceTranscript) && (
+                    <div className="voice-transcript-box">
+                      <span className="transcript-label">{isListening ? '🎤 Listening...' : '✅ Heard:'}</span>
+                      <p className="transcript-text">{voiceTranscript || 'Speak now...'}</p>
+                    </div>
+                  )}
+
+                  <div className="voice-controls-row">
+                    {micSupported ? (
+                      <button
+                        className={`mic-hold-btn ${isListening ? 'listening' : ''}`}
+                        onMouseDown={isSessionStarted && !isThinking && !isSpeaking ? startListening : undefined}
+                        onMouseUp={isListening ? stopListening : undefined}
+                        onTouchStart={isSessionStarted && !isThinking && !isSpeaking ? startListening : undefined}
+                        onTouchEnd={isListening ? stopListening : undefined}
+                        disabled={!isSessionStarted || isThinking || isSpeaking}
+                        title="Hold to speak"
+                      >
+                        <span className="mic-icon">{isListening ? '🔴' : '🎤'}</span>
+                        <span className="mic-label">{isListening ? 'Release to send' : 'Hold to speak'}</span>
+                        {isListening && <span className="mic-pulse-ring"></span>}
+                      </button>
+                    ) : (
+                      <div className="mic-not-supported">🚫 Microphone not supported in this browser. Use Chrome for voice input.</div>
+                    )}
+                  </div>
+
+                  <p className="voice-hint">
+                    {!isSessionStarted
+                      ? '👆 Click "Initialize AI Presenter" first'
+                      : isListening
+                      ? '🎙️ Listening — release the button when done speaking'
+                      : isSpeaking
+                      ? '🔊 Emma is speaking — wait or click Stop'
+                      : isThinking
+                      ? '⏳ Processing your question...'
+                      : '🎤 Hold the button and speak your question clearly'}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Article Reader Tab */}
+            {articleTab === 'article' && (
+              <div className="article-reader-panel">
+                <div className="article-reader-info">
+                  <h4>📋 Article Reader</h4>
+                  <p>Paste any news article below and Emma will briefly summarize and read it aloud like a live broadcast presenter.</p>
+                </div>
+                <textarea
+                  className="article-paste-area"
+                  placeholder="Paste the full article text here...&#10;&#10;Emma will read a short, clear broadcast-style summary of it."
+                  value={articleText}
+                  onChange={e => setArticleText(e.target.value)}
+                  rows={10}
+                  disabled={!isSessionStarted || isThinking || isSpeaking}
+                />
+                <div className="article-reader-actions">
+                  <span className="article-char-count">{articleText.length} / 1500 chars</span>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="article-clear-btn" onClick={() => setArticleText('')}
+                      disabled={!articleText}>✕ Clear</button>
+                    <button
+                      className="article-read-btn"
+                      onClick={handleReadArticle}
+                      disabled={!articleText.trim() || !isSessionStarted || isThinking || isSpeaking}
+                    >
+                      {isThinking ? '⏳ Reading...' : '🎙️ Read This Article'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Show conversation log below */}
+                {chatMessages.length > 1 && (
+                  <div className="article-chat-log">
+                    <div className="article-chat-log-title">💬 Session Log</div>
+                    <div className="chat-message-history" style={{ maxHeight: '200px' }}>
+                      {chatMessages.slice(-4).map((msg, i) => (
+                        <div key={i} className={`chat-message ${msg.sender}`}>
+                          <div className="message-bubble" style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>{msg.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
