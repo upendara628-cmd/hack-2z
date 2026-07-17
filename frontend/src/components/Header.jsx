@@ -49,10 +49,14 @@ const Header = ({ currentPage, onPageChange }) => {
         </div>
       </div>
 
-      {/* Chat Bar */}
+      {/* Chat Bar Hero Section */}
       {currentPage === 'home' && (
         <div className="chat-bar-section">
-          <div className="chat-container">
+          {/* Animated 3D Parallax Background */}
+          <div className="chat-bar-bg-animated"></div>
+          <div className="chat-bar-overlay"></div>
+          
+          <div className="chat-container" style={{ position: 'relative', zIndex: 2 }}>
             <div className="chat-bar">
               <input
                 type="text"
@@ -68,21 +72,15 @@ const Header = ({ currentPage, onPageChange }) => {
                 </svg>
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Secondary Navigation Bar */}
-      {currentPage === 'home' && (
-        <div className="header-bottom">
-          <div className="header-container">
-            <nav className="secondary-nav">
-              <a href="#" className="nav-link active">World</a>
-              <a href="#" className="nav-link">Politics</a>
-              <a href="#" className="nav-link">Business</a>
-              <a href="#" className="nav-link">Technology</a>
-              <a href="#" className="nav-link">Science</a>
-              <a href="#" className="nav-link">Opinion</a>
+            
+            {/* Centered Secondary Nav Links directly under search bar */}
+            <nav className="hero-secondary-nav">
+              <a href="#" className="hero-nav-link active">World</a>
+              <a href="#" className="hero-nav-link">Politics</a>
+              <a href="#" className="hero-nav-link">Business</a>
+              <a href="#" className="hero-nav-link">Technology</a>
+              <a href="#" className="hero-nav-link">Science</a>
+              <a href="#" className="hero-nav-link">Opinion</a>
             </nav>
           </div>
         </div>
