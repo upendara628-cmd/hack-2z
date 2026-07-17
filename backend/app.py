@@ -27,6 +27,7 @@ for env_path in ['.env', '../.env', 'backend/.env', '../backend/.env']:
 
 CURRENTS_API_KEY = os.environ.get("CURRENTS_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY", "")
 
 # Initialize Groq Client with custom http client to disable SSL certificate verification locally
 try:
@@ -127,69 +128,150 @@ def analyze_article_bias(title, description):
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
-    keyword = request.args.get('keyword', 'world').strip().lower()
-    
+    keyword = request.args.get('keyword', '').strip().lower()
+    country = request.args.get('country', '').strip().lower()
+
+    # Determine cache key
+    if country:
+        cache_key = f"country:{country}"
+    elif keyword:
+        cache_key = f"keyword:{keyword}"
+    else:
+        cache_key = "keyword:world"
+        keyword = "world"
+
     # 1. Check cache first
     now = time.time()
-    if keyword in news_cache:
-        cached_item = news_cache[keyword]
+    if cache_key in news_cache:
+        cached_item = news_cache[cache_key]
         if now - cached_item['timestamp'] < CACHE_EXPIRY_SECONDS:
-            print(f"Serving cached news for keyword: {keyword}")
+            print(f"Serving cached news for key: {cache_key}")
             return jsonify(cached_item['data'])
 
-    # 2. Fetch from Currents API with verify=False to bypass SSL errors
+    raw_articles = []
+
+    # 2. Fetch from Currents API
     news_url = "https://api.currentsapi.services/v1/search"
-    params = {
-        "keywords": keyword,
-        "language": "en",
-        "page_size": 4  # Limit size for speed and api efficiency
-    }
-    headers = {"Authorization": f"Bearer {CURRENTS_API_KEY}"}
+    if country:
+        params = {
+            "country": country,
+            "language": "en",
+            "page_size": 4
+        }
+    else:
+        params = {
+            "keywords": keyword,
+            "language": "en",
+            "page_size": 4
+        }
     
-    print(f"Fetching fresh news for: {keyword}...")
+    headers = {"Authorization": f"Bearer {CURRENTS_API_KEY}"}
+    print(f"Fetching Currents API news for {cache_key}...")
     try:
         response = requests.get(news_url, headers=headers, params=params, verify=False, timeout=10)
         news_data = response.json()
-        articles = news_data.get("news", [])
+        articles_curr = news_data.get("news", [])
+        for art in articles_curr:
+            raw_articles.append({
+                "source": "CurrentsAPI",
+                "id": art.get("id", ""),
+                "title": art.get("title", ""),
+                "description": art.get("description", ""),
+                "url": art.get("url", "#"),
+                "image": art.get("image", None),
+                "author": art.get("author", "Staff Reporter") or "Staff Reporter",
+                "time": art.get("published", "")[:16].replace("T", " ") if art.get("published") else "Recent"
+            })
     except Exception as e:
         print(f"Error fetching from Currents API: {e}")
-        articles = []
 
-    # 3. Handle empty articles (Fallback to mock data if API limits hit)
-    if not articles:
-        print("Currents API returned no articles or failed. Serving mock/fallback articles.")
-        fallback_data = get_fallback_articles(keyword)
-        # We don't cache fallback data forever so we retry the API later
+    # 3. Fetch from NewsAPI (if configured)
+    has_newsapi = NEWSAPI_KEY and "PLACEHOLDER" not in NEWSAPI_KEY
+    if has_newsapi:
+        print(f"Fetching NewsAPI news for {cache_key}...")
+        try:
+            if country:
+                newsapi_url = "https://newsapi.org/v2/top-headlines"
+                params_n = {
+                    "country": country,
+                    "apiKey": NEWSAPI_KEY,
+                    "pageSize": 4
+                }
+            else:
+                newsapi_url = "https://newsapi.org/v2/everything"
+                params_n = {
+                    "q": keyword,
+                    "language": "en",
+                    "apiKey": NEWSAPI_KEY,
+                    "pageSize": 4
+                }
+            
+            response = requests.get(newsapi_url, params=params_n, verify=False, timeout=10)
+            newsapi_data = response.json()
+            articles_n = newsapi_data.get("articles", [])
+            for art in articles_n:
+                raw_articles.append({
+                    "source": "NewsAPI",
+                    "id": art.get("url", ""),
+                    "title": art.get("title", ""),
+                    "description": art.get("description", ""),
+                    "url": art.get("url", "#"),
+                    "image": art.get("urlToImage", None),
+                    "author": art.get("author", "Staff Reporter") or "Staff Reporter",
+                    "time": art.get("publishedAt", "")[:16].replace("T", " ") if art.get("publishedAt") else "Recent"
+                })
+        except Exception as e:
+            print(f"Error fetching from NewsAPI: {e}")
+
+    # 4. Deduplicate and Merge
+    seen_titles = set()
+    merged_articles = []
+    for art in raw_articles:
+        title_norm = art["title"].strip().lower() if art["title"] else ""
+        if not title_norm or title_norm in seen_titles:
+            continue
+        seen_titles.add(title_norm)
+        merged_articles.append(art)
+
+    # Fallback if empty
+    if not merged_articles:
+        print("Both APIs returned no articles or failed. Serving fallback mock articles.")
+        fallback_data = get_fallback_articles(keyword if keyword else country)
         return jsonify(fallback_data)
 
+    # Cap to 5 to run Groq efficiently
+    merged_articles = merged_articles[:5]
+
+    # 5. Run Groq AI Bias Analysis
     processed_articles = []
-    for article in articles:
-        title = article.get('title', '')
-        description = article.get('description', '')
+    for article in merged_articles:
+        title = article["title"]
+        description = article["description"]
         
-        # Analyze bias
-        print(f"Analyzing article: {title[:50]}...")
+        safe_title = title[:50].encode('ascii', errors='ignore').decode('ascii')
+        print(f"Analyzing article: {safe_title}...")
         bias_report = analyze_article_bias(title, description)
         
         processed_articles.append({
-            "id": article.get('id', ''),
+            "id": article["id"],
             "title": title,
             "description": description,
-            "url": article.get('url', '#'),
-            "image": article.get('image', None) or "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop",
-            "author": article.get('author', 'Staff Reporter') or 'Staff Reporter',
-            "time": article.get('published', '')[:16].replace('T', ' ') if article.get('published') else 'Recent',
-            "category": keyword.upper(),
+            "url": article["url"],
+            "image": article["image"] or "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop",
+            "author": article["author"],
+            "time": article["time"],
+            "category": (keyword if keyword else "LOCAL").upper(),
+            "source": article["source"],
             "bias_tone": bias_report["tone"],
             "bias_analysis": bias_report["analysis"]
         })
 
     # Cache the result
-    news_cache[keyword] = {
+    news_cache[cache_key] = {
         "timestamp": now,
         "data": processed_articles
     }
-    
+
     return jsonify(processed_articles)
 
 def get_fallback_articles(keyword):

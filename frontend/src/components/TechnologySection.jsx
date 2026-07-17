@@ -161,7 +161,14 @@ const TechnologySection = () => {
                   >
                     <article className="tech-article">
                       <div className="tech-image">
-                        <img src={article.image} alt={article.title} />
+                        <img 
+                          src={article.image} 
+                          alt={article.title} 
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = "https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&h=250&fit=crop";
+                          }}
+                        />
                       </div>
                       <div className="tech-content" style={{ width: '100%' }}>
                         <h4 className="tech-title">{article.title}</h4>

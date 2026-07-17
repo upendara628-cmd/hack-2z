@@ -92,7 +92,14 @@ const FeaturedArticle = () => {
       <a href={currentArticle.url} target="_blank" rel="noopener noreferrer" className="featured-article-link" style={{ textDecoration: 'none', color: 'inherit' }}>
         <div className="featured-article">
           <div className="featured-image">
-            <img src={currentArticle.image} alt={currentArticle.title} />
+            <img 
+              src={currentArticle.image} 
+              alt={currentArticle.title} 
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop";
+              }}
+            />
           </div>
           <div className="featured-content">
             <span className="category">{currentArticle.category || 'WORLD'}</span>

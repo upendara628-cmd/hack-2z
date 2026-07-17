@@ -135,7 +135,14 @@ const PoliticsSection = () => {
               >
                 <article className="politics-card">
                   <div className="politics-image">
-                    <img src={article.image} alt={article.title} />
+                    <img 
+                      src={article.image} 
+                      alt={article.title} 
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&h=250&fit=crop";
+                      }}
+                    />
                   </div>
                   <span className="category-tag">POLITICS</span>
                   <h4 className="politics-title">{article.title}</h4>
