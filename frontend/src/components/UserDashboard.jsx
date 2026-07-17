@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
+
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
   const [isOpen, setIsOpen] = useState(false);
   
@@ -46,6 +48,7 @@ const UserDashboard = () => {
   const [coords, setCoords] = useState(null);
   const [articles, setArticles] = useState([]);
   const [biasStats, setBiasStats] = useState({ left: 0, right: 0, neutral: 0 });
+  const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
     // 1. Get location
@@ -110,13 +113,13 @@ const UserDashboard = () => {
       setLoading(true);
       try {
         // Fetch from local python backend
-        let url = `http://127.0.0.1:5000/api/news?country=${cc}`;
+        let url = `${API_BASE_URL}/api/news?country=${cc}`;
         let response = await fetch(url);
         let data = await response.json();
 
         // If no articles found, try fetching using city keyword
         if (!data || data.length === 0) {
-          url = `http://127.0.0.1:5000/api/news?keyword=${city || 'politics'}`;
+          url = `${API_BASE_URL}/api/news?keyword=${city || 'politics'}`;
           response = await fetch(url);
           data = await response.json();
         }
@@ -137,7 +140,7 @@ const UserDashboard = () => {
     if (!loading && articles.length > 0 && locationName !== 'Detecting...') {
       const logLocationStats = async () => {
         try {
-          await fetch('http://127.0.0.1:5000/api/location-stats', {
+          await fetch(`${API_BASE_URL}/api/location-stats`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -156,6 +159,42 @@ const UserDashboard = () => {
       logLocationStats();
     }
   }, [loading, articles, locationName, countryCode, coords, biasStats]);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleSpeak = (e, article) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = article.id || article.title;
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+    } else {
+      window.speechSynthesis.cancel();
+      setSpeakingId(id);
+      
+      const cleanDesc = article.description ? article.description.replace(/<[^>]*>/g, '') : '';
+      const textToSpeak = `${article.title}. ${cleanDesc}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      
+      const voices = window.speechSynthesis.getVoices();
+      const premiumVoice = voices.find(v => 
+        v.name.includes('Google') && v.lang.startsWith('en') || 
+        v.name.includes('Natural') && v.lang.startsWith('en') ||
+        v.lang.startsWith('en-US')
+      );
+      if (premiumVoice) utterance.voice = premiumVoice;
+
+      utterance.onend = () => setSpeakingId(null);
+      utterance.onerror = () => setSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   const calculateBiasStats = (articleList) => {
     if (articleList.length === 0) {
@@ -295,56 +334,69 @@ const UserDashboard = () => {
           </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {articles.map((article, idx) => (
-              <div 
-                key={idx}
-                style={{
-                  background: 'white',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                }}
-              >
-                {/* Image */}
-                <div style={{ width: '180px', height: '140px', flexShrink: 0 }}>
-                  <img 
-                    src={article.image} 
-                    alt={article.title} 
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=400&h=250&fit=crop";
-                    }}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                </div>
-                
-                {/* Content */}
-                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="source-badge">{article.source || 'CurrentsAPI'}</span>
-                    <span style={{ fontSize: '12px', color: '#666' }}>{article.time || 'Recent'}</span>
-                  </div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1a1a1a', margin: 0 }}>
-                    <a href={article.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
-                      {article.title}
-                    </a>
-                  </h3>
-                  <p style={{ fontSize: '14px', color: '#444', margin: 0, lineBreak: 'anywhere' }}>
-                    {article.description}
-                  </p>
-                  
-                  <div style={{ marginTop: '8px' }}>
-                    <BiasAnalysis 
-                      biasTone={article.bias_tone} 
-                      biasAnalysis={article.bias_analysis} 
+            {articles.map((article, idx) => {
+              const currentId = article.id || article.title;
+              const isSpeaking = speakingId === currentId;
+              
+              return (
+                <div 
+                  key={idx}
+                  className={isSpeaking ? 'article-card-speaking-highlight' : ''}
+                  style={{
+                    background: 'white',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {/* Image */}
+                  <div style={{ width: '180px', height: '140px', flexShrink: 0 }}>
+                    <img 
+                      src={article.image} 
+                      alt={article.title} 
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=400&h=250&fit=crop";
+                      }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   </div>
+                  
+                  {/* Content */}
+                  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="source-badge">{article.source || 'CurrentsAPI'}</span>
+                      <span style={{ fontSize: '12px', color: '#666' }}>{article.time || 'Recent'}</span>
+                    </div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1a1a1a', margin: 0 }}>
+                      <a href={article.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                        {article.title}
+                      </a>
+                    </h3>
+                    <p style={{ fontSize: '14px', color: '#444', margin: 0, lineBreak: 'anywhere' }}>
+                      {article.description}
+                    </p>
+                    
+                    <div className="speak-article-badge-row" style={{ marginTop: '8px', border: 'none', paddingTop: 0 }}>
+                      <BiasAnalysis 
+                        biasTone={article.bias_tone} 
+                        biasAnalysis={article.bias_analysis} 
+                      />
+                      <button 
+                        className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
+                        onClick={(e) => handleSpeak(e, article)}
+                      >
+                        {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

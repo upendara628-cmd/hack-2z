@@ -25,6 +25,13 @@ const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory })
             </a>
             <a 
               href="#" 
+              className={`nav-link ${currentPage === 'ai-avatar' ? 'active' : ''}`}
+              onClick={(e) => { e.preventDefault(); onPageChange('ai-avatar'); }}
+            >
+              AI Presenter
+            </a>
+            <a 
+              href="#" 
               className={`nav-link ${currentPage === 'about' ? 'active' : ''}`}
               onClick={(e) => { e.preventDefault(); onPageChange('about'); }}
             >

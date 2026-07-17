@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,9 +54,10 @@ const TechSkeleton = () => (
 const TechnologySection = ({ onCategorySelect }) => {
   const [techArticles, setTechArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/news?keyword=technology')
+    fetch(`${API_BASE_URL}/api/news?keyword=technology`)
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
@@ -68,6 +70,42 @@ const TechnologySection = ({ onCategorySelect }) => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleSpeak = (e, article) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = article.id || article.title;
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+    } else {
+      window.speechSynthesis.cancel();
+      setSpeakingId(id);
+      
+      const cleanDesc = article.description ? article.description.replace(/<[^>]*>/g, '') : '';
+      const textToSpeak = `${article.title}. ${cleanDesc}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      
+      const voices = window.speechSynthesis.getVoices();
+      const premiumVoice = voices.find(v => 
+        v.name.includes('Google') && v.lang.startsWith('en') || 
+        v.name.includes('Natural') && v.lang.startsWith('en') ||
+        v.lang.startsWith('en-US')
+      );
+      if (premiumVoice) utterance.voice = premiumVoice;
+
+      utterance.onend = () => setSpeakingId(null);
+      utterance.onerror = () => setSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   const defaultTechArticles = [
     {
@@ -151,40 +189,53 @@ const TechnologySection = ({ onCategorySelect }) => {
                   <TechSkeleton />
                 </>
               ) : (
-                displayTechArticles.slice(0, 3).map((article, index) => (
-                  <a 
-                    key={index} 
-                    href={article.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    style={{ textDecoration: 'none', color: 'inherit' }}
-                  >
-                    <article className="tech-article">
-                      <div className="tech-image">
-                        <img 
-                          src={article.image} 
-                          alt={article.title} 
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = "https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&h=250&fit=crop";
-                          }}
-                        />
-                      </div>
-                      <div className="tech-content" style={{ width: '100%' }}>
-                        <h4 className="tech-title">{article.title}</h4>
-                        <div className="article-meta">
-                          <span className="author">{article.author}</span>
-                          <span className="time">{article.time}</span>
+                displayTechArticles.slice(0, 3).map((article, index) => {
+                  const currentId = article.id || article.title;
+                  const isSpeaking = speakingId === currentId;
+                  
+                  return (
+                    <a 
+                      key={index} 
+                      href={article.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      style={{ textDecoration: 'none', color: 'inherit' }}
+                    >
+                      <article className={`tech-article ${isSpeaking ? 'article-card-speaking-highlight' : ''}`}>
+                        <div className="tech-image">
+                          <img 
+                            src={article.image} 
+                            alt={article.title} 
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = "https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&h=250&fit=crop";
+                            }}
+                          />
                         </div>
-                        
-                        <BiasAnalysis 
-                          biasTone={article.bias_tone} 
-                          biasAnalysis={article.bias_analysis} 
-                        />
-                      </div>
-                    </article>
-                  </a>
-                ))
+                        <div className="tech-content" style={{ width: '100%' }}>
+                          <h4 className="tech-title">{article.title}</h4>
+                          <div className="article-meta">
+                            <span className="author">{article.author}</span>
+                            <span className="time">{article.time}</span>
+                          </div>
+                          
+                          <div className="speak-article-badge-row" style={{ marginTop: '10px' }}>
+                            <BiasAnalysis 
+                              biasTone={article.bias_tone} 
+                              biasAnalysis={article.bias_analysis} 
+                            />
+                            <button 
+                              className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
+                              onClick={(e) => handleSpeak(e, article)}
+                            >
+                              {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    </a>
+                  );
+                })
               )}
             </div>
           </div>
@@ -195,18 +246,32 @@ const TechnologySection = ({ onCategorySelect }) => {
               <a href="#" className="view-all">ALL OPINION →</a>
             </div>
             <div className="opinion-articles">
-              {opinionArticles.map((article, index) => (
-                <article key={index} className="opinion-article">
-                  <div className="opinion-author">
-                    <img src={article.image} alt={article.author} />
-                  </div>
-                  <div className="opinion-content">
-                    <h4 className="opinion-title">{article.title}</h4>
-                    <p className="opinion-author-name">{article.author}</p>
-                    <p className="opinion-author-title">{article.title_role}</p>
-                  </div>
-                </article>
-              ))}
+              {opinionArticles.map((article, index) => {
+                const currentId = article.title;
+                const isSpeaking = speakingId === currentId;
+                
+                return (
+                  <article key={index} className={`opinion-article ${isSpeaking ? 'article-card-speaking-highlight' : ''}`}>
+                    <div className="opinion-author">
+                      <img src={article.image} alt={article.author} />
+                    </div>
+                    <div className="opinion-content" style={{ flexGrow: 1 }}>
+                      <h4 className="opinion-title">{article.title}</h4>
+                      <p className="opinion-author-name">{article.author}</p>
+                      <p className="opinion-author-title">{article.title_role}</p>
+                      <div className="speak-article-badge-row" style={{ marginTop: '6px', border: 'none', paddingTop: 0 }}>
+                        <span></span>
+                        <button 
+                          className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
+                          onClick={(e) => handleSpeak(e, article)}
+                        >
+                          {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </div>

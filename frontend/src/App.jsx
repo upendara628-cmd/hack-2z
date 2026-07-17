@@ -8,6 +8,7 @@ import TrendingSection from './components/TrendingSection.jsx';
 import Footer from './components/Footer.jsx';
 import UserDashboard from './components/UserDashboard.jsx';
 import CategoryView from './components/CategoryView.jsx';
+import AiPresenter from './components/AiPresenter.jsx';
 import './App.css';
 
 function App() {
@@ -60,6 +61,10 @@ function App() {
 
       {currentPage === 'dashboard' && (
         <UserDashboard />
+      )}
+
+      {currentPage === 'ai-avatar' && (
+        <AiPresenter />
       )}
 
       {currentPage === 'about' && (

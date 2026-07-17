@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 const TrendingSection = () => {
   const [trendingArticles, setTrendingArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/news?keyword=general')
+    fetch(`${API_BASE_URL}/api/news?keyword=general`)
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
@@ -18,6 +20,42 @@ const TrendingSection = () => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleSpeak = (e, article) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = article.id || article.title;
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+    } else {
+      window.speechSynthesis.cancel();
+      setSpeakingId(id);
+      
+      const cleanDesc = article.description ? article.description.replace(/<[^>]*>/g, '') : '';
+      const textToSpeak = `${article.title}. ${cleanDesc}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      
+      const voices = window.speechSynthesis.getVoices();
+      const premiumVoice = voices.find(v => 
+        v.name.includes('Google') && v.lang.startsWith('en') || 
+        v.name.includes('Natural') && v.lang.startsWith('en') ||
+        v.lang.startsWith('en-US')
+      );
+      if (premiumVoice) utterance.voice = premiumVoice;
+
+      utterance.onend = () => setSpeakingId(null);
+      utterance.onerror = () => setSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   const defaultTrendingArticles = [
     { category: "WORLD", title: "What Happens When a Country Runs Out of Judges", url: "#" },
@@ -40,23 +78,38 @@ const TrendingSection = () => {
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>Loading trending stories...</div>
           ) : (
-            displayArticles.slice(0, 5).map((article, index) => (
-              <a 
-                key={index} 
-                href={article.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                style={{ textDecoration: 'none', color: 'inherit' }}
-              >
-                <article className="trending-item">
-                  <span className="trending-number">{index + 1}</span>
-                  <div className="trending-content">
-                    <span className="category-tag">{article.category || 'WORLD'}</span>
-                    <h4 className="trending-title">{article.title}</h4>
-                  </div>
-                </article>
-              </a>
-            ))
+            displayArticles.slice(0, 5).map((article, index) => {
+              const currentId = article.id || article.title;
+              const isSpeaking = speakingId === currentId;
+
+              return (
+                <a 
+                  key={index} 
+                  href={article.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  <article className={`trending-item ${isSpeaking ? 'article-card-speaking-highlight' : ''}`}>
+                    <span className="trending-number">{index + 1}</span>
+                    <div className="trending-content" style={{ width: '100%' }}>
+                      <span className="category-tag">{article.category || 'WORLD'}</span>
+                      <h4 className="trending-title">{article.title}</h4>
+                      
+                      <div className="speak-article-badge-row" style={{ border: 'none', paddingTop: 0, marginTop: '5px' }}>
+                        <span></span>
+                        <button 
+                          className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
+                          onClick={(e) => handleSpeak(e, article)}
+                        >
+                          {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                </a>
+              );
+            })
           )}
         </div>
       </div>

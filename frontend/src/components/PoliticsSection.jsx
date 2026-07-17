@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -50,9 +51,10 @@ const CardSkeleton = () => (
 const PoliticsSection = ({ onCategorySelect }) => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/news?keyword=politics')
+    fetch(`${API_BASE_URL}/api/news?keyword=politics`)
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
@@ -65,6 +67,42 @@ const PoliticsSection = ({ onCategorySelect }) => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleSpeak = (e, article) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = article.id || article.title;
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+    } else {
+      window.speechSynthesis.cancel();
+      setSpeakingId(id);
+      
+      const cleanDesc = article.description ? article.description.replace(/<[^>]*>/g, '') : '';
+      const textToSpeak = `${article.title}. ${cleanDesc}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      
+      const voices = window.speechSynthesis.getVoices();
+      const premiumVoice = voices.find(v => 
+        v.name.includes('Google') && v.lang.startsWith('en') || 
+        v.name.includes('Natural') && v.lang.startsWith('en') ||
+        v.lang.startsWith('en-US')
+      );
+      if (premiumVoice) utterance.voice = premiumVoice;
+
+      utterance.onend = () => setSpeakingId(null);
+      utterance.onerror = () => setSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   const defaultArticles = [
     {
@@ -125,39 +163,52 @@ const PoliticsSection = ({ onCategorySelect }) => {
               <CardSkeleton />
             </>
           ) : (
-            displayArticles.slice(0, 3).map((article, index) => (
-              <a 
-                key={index} 
-                href={article.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                style={{ textDecoration: 'none', color: 'inherit' }}
-              >
-                <article className="politics-card">
-                  <div className="politics-image">
-                    <img 
-                      src={article.image} 
-                      alt={article.title} 
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&h=250&fit=crop";
-                      }}
-                    />
-                  </div>
-                  <span className="category-tag">POLITICS</span>
-                  <h4 className="politics-title">{article.title}</h4>
-                  <div className="article-meta">
-                    <span className="author">{article.author}</span>
-                    <span className="time">{article.time}</span>
-                  </div>
-                  
-                  <BiasAnalysis 
-                    biasTone={article.bias_tone} 
-                    biasAnalysis={article.bias_analysis} 
-                  />
-                </article>
-              </a>
-            ))
+            displayArticles.slice(0, 3).map((article, index) => {
+              const currentId = article.id || article.title;
+              const isSpeaking = speakingId === currentId;
+              
+              return (
+                <a 
+                  key={index} 
+                  href={article.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  <article className={`politics-card ${isSpeaking ? 'article-card-speaking-highlight' : ''}`}>
+                    <div className="politics-image">
+                      <img 
+                        src={article.image} 
+                        alt={article.title} 
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=400&h=250&fit=crop";
+                        }}
+                      />
+                    </div>
+                    <span className="category-tag">POLITICS</span>
+                    <h4 className="politics-title">{article.title}</h4>
+                    <div className="article-meta">
+                      <span className="author">{article.author}</span>
+                      <span className="time">{article.time}</span>
+                    </div>
+                    
+                    <div className="speak-article-badge-row" style={{ marginTop: '10px' }}>
+                      <BiasAnalysis 
+                        biasTone={article.bias_tone} 
+                        biasAnalysis={article.bias_analysis} 
+                      />
+                      <button 
+                        className={`article-speak-btn ${isSpeaking ? 'active-speaking' : ''}`}
+                        onClick={(e) => handleSpeak(e, article)}
+                      >
+                        {isSpeaking ? '⏹️ Stop' : '🔊 Listen'}
+                      </button>
+                    </div>
+                  </article>
+                </a>
+              );
+            })
           )}
         </div>
       </div>
