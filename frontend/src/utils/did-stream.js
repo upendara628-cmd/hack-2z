@@ -5,55 +5,102 @@ export class DIDStreamManager {
     this.videoElement = videoElement;
     this.onStatusChange = onStatusChange || (() => {});
     this.onNewSubtitle = onNewSubtitle || (() => {});
-    
+
     this.peerConnection = null;
     this.streamId = null;
     this.sessionId = null;
     this.iceGatheringTimeout = null;
+    this._streamConnected = false;
   }
 
   async connect() {
-    this.onStatusChange('Connecting to D-ID Session...');
-    
+    this.onStatusChange('Connecting...');
+
     try {
+      // 1. Create D-ID stream session
       const response = await fetch(`${API_BASE_URL}/api/did-stream/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
       });
-      
+
       const responseText = await response.text();
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        throw new Error(`Server returned non-JSON response (status ${response.status}): ${responseText.substring(0, 200)}`);
+        throw new Error(`Server returned non-JSON (status ${response.status}): ${responseText.substring(0, 200)}`);
       }
-      
+
       if (!response.ok || !data.id) {
-        throw new Error(data.error || 'Failed to create stream session');
+        throw new Error(data.error || 'Failed to create D-ID stream session');
       }
-      
+
       this.streamId = data.id;
       this.sessionId = data.session_id;
-      
-      // 2. Create RTCPeerConnection with D-ID's ICE Servers
-      const iceServers = data.ice_servers;
+
+      console.log('[D-ID] Stream session created:', this.streamId);
+
+      // 2. Create RTCPeerConnection
+      const iceServers = data.ice_servers || [{ urls: 'stun:stun.l.google.com:19302' }];
       this.peerConnection = new RTCPeerConnection({ iceServers });
-      
-      // Handle connection states
+
+      // ── Handle connection state changes ──────────────────────────
       this.peerConnection.onconnectionstatechange = () => {
-        this.onStatusChange(`Connection state: ${this.peerConnection.connectionState}`);
-      };
-      
-      // Handle incoming video track
-      this.peerConnection.ontrack = (event) => {
-        if (event.track.kind === 'video' && this.videoElement) {
-          this.videoElement.srcObject = event.streams[0];
-          this.onStatusChange('Connected');
+        const state = this.peerConnection?.connectionState;
+        console.log('[D-ID] Connection state:', state);
+        if (state === 'connected') {
+          // Don't overwrite 'Connected' status — already set in ontrack
+        } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+          this.onStatusChange('Failed');
         }
       };
 
-      // Handle ICE Candidates
+      this.peerConnection.oniceconnectionstatechange = () => {
+        const state = this.peerConnection?.iceConnectionState;
+        console.log('[D-ID] ICE state:', state);
+      };
+
+      // ── Handle incoming media tracks ──────────────────────────────
+      this.peerConnection.ontrack = (event) => {
+        console.log('[D-ID] Track received:', event.track.kind, 'streams:', event.streams.length);
+
+        // Attach the stream to the video element on FIRST track (video or audio)
+        if (this.videoElement && event.streams && event.streams[0]) {
+          // Always set srcObject to the full stream (contains both audio+video)
+          if (!this._streamConnected) {
+            this._streamConnected = true;
+            this.videoElement.srcObject = event.streams[0];
+
+            // Ensure the video plays (required for WebRTC streams)
+            const playVideo = () => {
+              this.videoElement.play()
+                .then(() => {
+                  console.log('[D-ID] ✅ Video is playing!');
+                  this.onStatusChange('Connected');
+                })
+                .catch(err => {
+                  console.warn('[D-ID] Video autoplay blocked, retrying muted:', err);
+                  // Try muted first to bypass autoplay policy, then unmute
+                  this.videoElement.muted = true;
+                  this.videoElement.play()
+                    .then(() => {
+                      console.log('[D-ID] ✅ Video playing (muted, will unmute)');
+                      this.onStatusChange('Connected');
+                      // Unmute after a short delay
+                      setTimeout(() => { if (this.videoElement) this.videoElement.muted = false; }, 500);
+                    })
+                    .catch(e => console.error('[D-ID] Video play failed:', e));
+                });
+            };
+
+            // Small delay to let the stream stabilize
+            setTimeout(playVideo, 100);
+          }
+        }
+      };
+
+      // ── ICE Candidate exchange ────────────────────────────────────
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           const candidate = event.candidate.toJSON();
@@ -67,18 +114,20 @@ export class DIDStreamManager {
               sdpMid: candidate.sdpMid,
               sdpMLineIndex: candidate.sdpMLineIndex
             })
-          }).catch(err => console.error("Error sending ICE Candidate to D-ID:", err));
+          }).catch(err => console.warn('[D-ID] ICE candidate send error:', err));
         }
       };
 
-      // 3. Set Remote Description (D-ID's Offer)
+      // 3. Set Remote Description (D-ID's Offer SDP)
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-      
-      // 4. Create Local Answer
+      console.log('[D-ID] Remote description set');
+
+      // 4. Create local Answer SDP
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
-      
-      // 5. Send Answer to D-ID
+      console.log('[D-ID] Local answer set');
+
+      // 5. Send Answer to D-ID backend
       const sdpResponse = await fetch(`${API_BASE_URL}/api/did-stream/sdp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,21 +137,19 @@ export class DIDStreamManager {
           answer: answer
         })
       });
-      
+
       if (!sdpResponse.ok) {
-        const sdpText = await sdpResponse.text();
+        const text = await sdpResponse.text();
         let sdpData;
-        try {
-          sdpData = JSON.parse(sdpText);
-        } catch (e) {
-          throw new Error(`SDP submission failed (status ${sdpResponse.status}): ${sdpText.substring(0, 200)}`);
-        }
-        throw new Error(sdpData.error || 'Failed to submit SDP Answer');
+        try { sdpData = JSON.parse(text); } catch { sdpData = { error: text }; }
+        throw new Error(sdpData.error || `SDP submission failed: ${sdpResponse.status}`);
       }
-      
-      this.onStatusChange('WebRTC Negotiated. Waiting for stream...');
+
+      this.onStatusChange('Waiting for avatar...');
+      console.log('[D-ID] SDP answer sent. Waiting for video track...');
+
     } catch (error) {
-      console.error("D-ID Connection failed:", error);
+      console.error('[D-ID] Connection failed:', error);
       this.onStatusChange('Failed');
       throw error;
     }
@@ -110,9 +157,9 @@ export class DIDStreamManager {
 
   async talk(text) {
     if (!this.streamId || !this.sessionId) {
-      throw new Error("No active D-ID stream session");
+      throw new Error('No active D-ID stream session');
     }
-    
+
     const response = await fetch(`${API_BASE_URL}/api/did-stream/talk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -122,29 +169,24 @@ export class DIDStreamManager {
         text: text
       })
     });
-    
+
     if (!response.ok) {
       const responseText = await response.text();
       let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        throw new Error(`Talk request failed (status ${response.status}): ${responseText.substring(0, 200)}`);
-      }
-      throw new Error(data.error || 'Talk request failed');
+      try { data = JSON.parse(responseText); } catch { data = { error: responseText }; }
+      throw new Error(data.error || `Talk request failed: ${response.status}`);
     }
-    
-    const responseText = await response.text();
+
     try {
-      return JSON.parse(responseText);
-    } catch (e) {
+      return await response.json();
+    } catch {
       return { success: true };
     }
   }
 
   async destroy() {
     if (this.iceGatheringTimeout) clearTimeout(this.iceGatheringTimeout);
-    
+
     if (this.streamId && this.sessionId) {
       try {
         await fetch(`${API_BASE_URL}/api/did-stream/destroy`, {
@@ -156,16 +198,22 @@ export class DIDStreamManager {
           })
         });
       } catch (err) {
-        console.error("Error destroying D-ID stream session:", err);
+        console.warn('[D-ID] Destroy error:', err);
       }
     }
-    
+
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
     }
+
+    if (this.videoElement) {
+      this.videoElement.srcObject = null;
+    }
+
     this.streamId = null;
     this.sessionId = null;
+    this._streamConnected = false;
     this.onStatusChange('Disconnected');
   }
 }
