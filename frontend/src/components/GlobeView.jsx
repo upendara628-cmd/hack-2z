@@ -106,15 +106,19 @@ const GlobeView = () => {
     }
   }, [fetchCountryNews]);
 
-  // Globe point markers
-  const pointsData = COUNTRIES.map(c => ({
+  // Globe ring markers (flat glowing pulse rings — no vertical bars)
+  const ringsData = COUNTRIES.map(c => ({
     lat: c.lat,
     lng: c.lng,
     name: c.name,
     flag: c.flag,
     country: c,
-    size: selectedCountry?.code === c.code ? 1.4 : 0.7,
-    color: selectedCountry?.code === c.code ? '#ff4757' : '#ffd32a',
+    maxR: selectedCountry?.code === c.code ? 4 : 2.5,
+    propagationSpeed: selectedCountry?.code === c.code ? 3 : 1.5,
+    repeatPeriod: selectedCountry?.code === c.code ? 700 : 1200,
+    color: selectedCountry?.code === c.code
+      ? t => `rgba(248,71,71,${1 - t})`
+      : t => `rgba(96,165,250,${1 - t})`,
   }));
 
   return (
@@ -178,15 +182,17 @@ const GlobeView = () => {
               globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
               backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
               bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-              pointsData={pointsData}
-              pointAltitude="size"
-              pointColor="color"
-              pointRadius={0.6}
-              pointLabel={d => `<div class="globe-tooltip"><span>${d.flag}</span> ${d.name}</div>`}
-              onPointClick={d => handleCountryClick(d.country)}
-              onPointHover={d => setHoveredCountry(d ? d.name : null)}
+              ringsData={ringsData}
+              ringColor="color"
+              ringMaxRadius="maxR"
+              ringPropagationSpeed="propagationSpeed"
+              ringRepeatPeriod="repeatPeriod"
+              ringLabel={d => `<div class="globe-tooltip"><span>${d.flag}</span> ${d.name}</div>`}
+              onRingClick={d => handleCountryClick(d.country)}
+              onRingHover={d => setHoveredCountry(d ? d.name : null)}
               atmosphereColor="#1a90ff"
               atmosphereAltitude={0.25}
+              enablePointerInteraction={true}
               onGlobeReady={() => setGlobeReady(true)}
               width={containerRef.current?.clientWidth || 620}
               height={520}
@@ -202,7 +208,7 @@ const GlobeView = () => {
           )}
           {!selectedCountry && globeReady && (
             <div className="globe-hint-overlay">
-              <span>👆 Click any glowing dot or select from the list</span>
+              <span>🖱️ Drag to rotate · Click a glowing ring or pick from the list</span>
             </div>
           )}
         </div>
