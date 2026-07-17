@@ -5,7 +5,6 @@ import Sidebar from './components/Sidebar.jsx';
 import PoliticsSection from './components/PoliticsSection.jsx';
 import TechnologySection from './components/TechnologySection.jsx';
 import TrendingSection from './components/TrendingSection.jsx';
-import NewsletterSection from './components/NewsletterSection.jsx';
 import Footer from './components/Footer.jsx';
 import UserDashboard from './components/UserDashboard.jsx';
 import './App.css';
@@ -49,7 +48,6 @@ function App() {
         </div>
       )}
 
-      <NewsletterSection />
       <Footer />
     </div>
   );
