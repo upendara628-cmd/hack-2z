@@ -41,7 +41,7 @@ const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
   );
 };
 
-const UserDashboard = () => {
+const UserDashboard = ({ user, onSignOut }) => {
   const [loading, setLoading] = useState(true);
   const [locationName, setLocationName] = useState('Detecting...');
   const [countryCode, setCountryCode] = useState('');
@@ -238,6 +238,41 @@ const UserDashboard = () => {
       <h1 className="dashboard-title-header">Your Location Dashboard</h1>
       
       <div className="dashboard-grid">
+        {/* User Profile Panel */}
+        <div className="location-panel user-profile-panel">
+          <h2 className="panel-title">👤 User Account</h2>
+          <div className="location-info">
+            <img 
+              src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop"} 
+              alt="User Avatar"
+              style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #c41e3a', marginRight: '15px' }}
+            />
+            <div className="location-text" style={{ flexGrow: 1 }}>
+              <span className="location-label">Logged In As</span>
+              <span className="location-value" style={{ fontSize: '18px', fontWeight: '700' }}>{user?.name || "Alex Johnson"}</span>
+              <span className="location-coords">{user?.email || "alex.johnson@example.com"}</span>
+            </div>
+          </div>
+          <button 
+            onClick={onSignOut}
+            className="signout-btn"
+            style={{
+              marginTop: '15px',
+              padding: '8px 16px',
+              backgroundColor: '#c41e3a',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s',
+              width: '100%'
+            }}
+          >
+            🚪 Sign Out
+          </button>
+        </div>
+
         {/* Geolocation Info Panel */}
         <div className="location-panel">
           <h2 className="panel-title">📍 Detected Location</h2>

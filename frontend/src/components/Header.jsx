@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory }) => {
+const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory, user }) => {
   const [chatMessage, setChatMessage] = useState('');
 
   const handleChat = (e) => {
@@ -45,11 +45,11 @@ const Header = ({ currentPage, onPageChange, onCategorySelect, activeCategory })
             >
               <img 
                 className="nav-user-avatar" 
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop" 
+                src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop"} 
                 alt="User Profile" 
               />
               <span className={`nav-link-text ${currentPage === 'dashboard' ? 'active' : ''}`} style={{ color: currentPage === 'dashboard' ? '#c41e3a' : 'inherit', fontWeight: 'bold' }}>
-                Alex Johnson
+                {user?.name || "Alex Johnson"}
               </span>
             </button>
           </nav>

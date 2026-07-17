@@ -16,12 +16,18 @@ export class DIDStreamManager {
     this.onStatusChange('Connecting to D-ID Session...');
     
     try {
-      // 1. Create Stream Session via our Flask Proxy
       const response = await fetch(`${API_BASE_URL}/api/did-stream/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
-      const data = await response.json();
+      
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Server returned non-JSON response (status ${response.status}): ${responseText.substring(0, 200)}`);
+      }
       
       if (!response.ok || !data.id) {
         throw new Error(data.error || 'Failed to create stream session');
@@ -84,7 +90,13 @@ export class DIDStreamManager {
       });
       
       if (!sdpResponse.ok) {
-        const sdpData = await sdpResponse.json();
+        const sdpText = await sdpResponse.text();
+        let sdpData;
+        try {
+          sdpData = JSON.parse(sdpText);
+        } catch (e) {
+          throw new Error(`SDP submission failed (status ${sdpResponse.status}): ${sdpText.substring(0, 200)}`);
+        }
         throw new Error(sdpData.error || 'Failed to submit SDP Answer');
       }
       
@@ -112,10 +124,22 @@ export class DIDStreamManager {
     });
     
     if (!response.ok) {
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Talk request failed (status ${response.status}): ${responseText.substring(0, 200)}`);
+      }
       throw new Error(data.error || 'Talk request failed');
     }
-    return response.json();
+    
+    const responseText = await response.text();
+    try {
+      return JSON.parse(responseText);
+    } catch (e) {
+      return { success: true };
+    }
   }
 
   async destroy() {
