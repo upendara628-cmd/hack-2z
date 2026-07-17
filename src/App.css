@@ -2,7 +2,6 @@
 .header {
   background-color: #1a1a1a;
   color: white;
-  padding: 16px 0;
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -17,10 +16,86 @@
   justify-content: space-between;
 }
 
+/* Header Top - Main Navigation */
+.header-top {
+  padding: 16px 0;
+  border-bottom: 1px solid #333;
+}
+
 .logo {
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 2px;
+}
+
+.main-nav {
+  display: flex;
+  gap: 32px;
+}
+
+/* Chat Bar Section */
+.chat-bar-section {
+  background-color: #2a2a2a;
+  padding: 20px 0;
+  border-bottom: 1px solid #333;
+}
+
+.chat-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 8px 16px;
+}
+
+.chat-input {
+  flex: 1;
+  background-color: transparent;
+  border: none;
+  color: white;
+  font-size: 15px;
+  outline: none;
+  padding: 8px 0;
+}
+
+.chat-input::placeholder {
+  color: #888;
+}
+
+.chat-send-btn {
+  background-color: #c41e3a;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-send-btn:hover {
+  background-color: #a01830;
+}
+
+/* Header Bottom - Secondary Navigation */
+.header-bottom {
+  padding: 12px 0;
+  background-color: #1a1a1a;
+}
+
+.secondary-nav {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
 }
 
 .nav {
@@ -46,18 +121,37 @@
   align-items: center;
 }
 
-.subscribe-btn {
-  background-color: #c41e3a;
-  color: white;
-  padding: 8px 20px;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 600;
-  transition: background-color 0.2s;
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.subscribe-btn:hover {
-  background-color: #a01830;
+.search-input {
+  background-color: #2a2a2a;
+  border: 1px solid #333;
+  color: white;
+  padding: 8px 36px 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  width: 200px;
+  outline: none;
+  transition: border-color 0.2s, width 0.2s;
+}
+
+.search-input:focus {
+  border-color: #c41e3a;
+  width: 240px;
+}
+
+.search-input::placeholder {
+  color: #888;
+}
+
+.search-icon {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
 }
 
 .sign-in {
