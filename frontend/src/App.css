@@ -35,8 +35,10 @@
 
 /* Chat Bar Section */
 .chat-bar-section {
-  background-color: #2a2a2a;
-  padding: 20px 0;
+  background-image: linear-gradient(rgba(26, 26, 26, 0.85), rgba(26, 26, 26, 0.85)), url('https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1600&fit=crop&q=80');
+  background-size: cover;
+  background-position: center;
+  padding: 40px 0;
   border-bottom: 1px solid #333;
 }
 
@@ -919,3 +921,229 @@
     transform: translateY(0);
   }
 }
+
+/* navbar user profile */
+.nav-user-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ccc;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+}
+
+.nav-user-profile:hover {
+  color: white;
+}
+
+.nav-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #c41e3a;
+  box-shadow: 0 0 10px rgba(196, 30, 58, 0.4);
+}
+
+/* dashboard styles */
+.dashboard-container {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+.dashboard-title-header {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 24px;
+  border-left: 5px solid #c41e3a;
+  padding-left: 15px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-bottom: 40px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.location-panel, .chart-panel {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.panel-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0;
+}
+
+.location-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background-color: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  border-left: 4px solid #c41e3a;
+}
+
+.location-icon-wrapper {
+  font-size: 24px;
+}
+
+.location-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.location-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.location-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.location-coords {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.chart-container-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chart-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chart-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4b5563;
+  text-transform: uppercase;
+}
+
+.chart-bar-bg {
+  height: 14px;
+  background-color: #f1f5f9;
+  border-radius: 9999px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.chart-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chart-bar-fill.left-leaning {
+  background: linear-gradient(90deg, #38bdf8, #0284c7);
+}
+
+.chart-bar-fill.right-leaning {
+  background: linear-gradient(90deg, #fca5a5, #dc2626);
+}
+
+.chart-bar-fill.neutral {
+  background: linear-gradient(90deg, #cbd5e1, #64748b);
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #6b7280;
+  border-top: 1px dashed #e2e8f0;
+  padding-top: 15px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-color.left-leaning {
+  background-color: #0284c7;
+}
+
+.legend-color.right-leaning {
+  background-color: #dc2626;
+}
+
+.legend-color.neutral {
+  background-color: #64748b;
+}
+
+.bias-summary-card {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.dashboard-articles-section {
+  margin-top: 40px;
+}
+
+.dashboard-articles-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 20px;
+}
+
+.source-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #e2e8f0;
+  color: #475569;
+  text-transform: uppercase;
+}
+
