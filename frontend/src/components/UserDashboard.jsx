@@ -1,5 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import BiasAnalysis from './BiasAnalysis';
+const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  if (!biasTone) return null;
+  
+  const getBadgeClass = (tone) => {
+    const t = tone.toLowerCase();
+    if (t.includes('left')) return 'left-leaning';
+    if (t.includes('right')) return 'right-leaning';
+    return 'neutral';
+  };
+  
+  return (
+    <div className="bias-container">
+      <div className="bias-header-row">
+        <span className={`bias-badge ${getBadgeClass(biasTone)}`}>
+          ⚖️ {biasTone}
+        </span>
+        <button 
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); }}
+          className="bias-analysis-toggle"
+        >
+          {isOpen ? 'Hide AI ▲' : 'Show AI ▼'}
+        </button>
+      </div>
+      
+      {isOpen && (
+        <ul className="bias-bullets" onClick={(e) => e.stopPropagation()}>
+          {biasAnalysis && biasAnalysis.map((bullet, idx) => (
+            <li key={idx} className="bias-bullet-item">
+              <span className="bullet-point">•</span>
+              <span className="bullet-text">{bullet}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 const UserDashboard = () => {
   const [loading, setLoading] = useState(true);
