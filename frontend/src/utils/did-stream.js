@@ -99,7 +99,7 @@ export class DIDStreamManager {
 
       // ── ICE Candidate exchange ────────────────────────────────────
       this.peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
+        if (event.candidate && event.candidate.candidate) {
           const candidate = event.candidate.toJSON();
           fetch(`${API_BASE_URL}/api/did-stream/ice`, {
             method: 'POST',

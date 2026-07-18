@@ -2,9 +2,13 @@ import time
 import requests
 import urllib3
 import httpx
+import ssl
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from groq import Groq
+
+# Bypass SSL certificate verification globally (useful for local hackathons and certificates mismatch)
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # Disable SSL verification warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -1028,7 +1032,7 @@ def did_ice():
     sdpMLineIndex = data.get("sdpMLineIndex")
 
     if not stream_id or not session_id or not candidate:
-        return jsonify({"error": "Missing parameters"}), 400
+        return jsonify({"ok": True, "message": "Ignored empty or end-of-candidate candidate"}), 200
 
     headers = {"Authorization": DID_AUTH_HEADER, "Content-Type": "application/json"}
     payload = {"candidate": candidate, "sdpMid": sdpMid, "sdpMLineIndex": sdpMLineIndex, "session_id": session_id}

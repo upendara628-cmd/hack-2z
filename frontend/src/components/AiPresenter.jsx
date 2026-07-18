@@ -60,12 +60,11 @@ const AiPresenter = ({ user }) => {
   useEffect(() => {
     return () => {
       if (streamManagerRef.current) streamManagerRef.current.destroy().catch(() => {});
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      if (audioRef.current) { audioRef.current.pause(); }
       if (recognitionRef.current) recognitionRef.current.abort();
       window.speechSynthesis.cancel();
-      if (lastAudioUrl) URL.revokeObjectURL(lastAudioUrl);
     };
-  }, [lastAudioUrl]);
+  }, []);
 
   // ── ElevenLabs TTS ─────────────────────────────────────────────
   const speakWithBrowserTTS = useCallback((text) => {
@@ -181,7 +180,7 @@ const AiPresenter = ({ user }) => {
         const checkVideo = setInterval(() => {
           const vid = videoRef.current;
           attempts++;
-          if (vid && vid.srcObject && vid.readyState >= 2) {
+          if (vid && vid.srcObject && vid.readyState >= 2 && !vid.paused) {
             clearInterval(checkVideo);
             vid.muted = false;
             setVideoReady(true);
@@ -192,8 +191,6 @@ const AiPresenter = ({ user }) => {
               welcomedRef.current = true;
               speakResponse('Hello! I am Emma, your AI News Presenter from Truth Lens. Hold the microphone button and speak your question, or paste an article for me to read aloud!');
             }
-          } else if (vid && vid.srcObject && vid.paused) {
-            vid.play().catch(() => {});
           }
           // Removing max attempts limitation so it can eventually show if it takes longer than 12s
         }, 300);
