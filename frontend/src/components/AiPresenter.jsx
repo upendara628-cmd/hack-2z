@@ -36,6 +36,9 @@ const AiPresenter = ({ user }) => {
   const [newsSources, setNewsSources] = useState(null);
   const [lastAudioBlob, setLastAudioBlob] = useState(null);
   const [lastAudioUrl, setLastAudioUrl] = useState(null);
+  const [podcastStage, setPodcastStage] = useState('');
+  const [podcastProgressPercent, setPodcastProgressPercent] = useState(0);
+  const [isRenderingPodcast, setIsRenderingPodcast] = useState(false);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -87,16 +90,18 @@ const AiPresenter = ({ user }) => {
     else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; }
   }, []);
 
-  const speakResponse = useCallback(async (text) => {
-    setCurrentSpeech(text);
-    setIsSpeaking(true);
-    setConnectionStatus('Speaking...');
-    
-    if (videoRef.current) {
-      videoRef.current.muted = true;
-    }
-    if (streamManagerRef.current && didInitialized.current) {
-      streamManagerRef.current.talk(text).catch(err => console.warn('D-ID talk error:', err));
+  const speakResponse = useCallback(async (text, autoPlay = true) => {
+    if (autoPlay) {
+      setCurrentSpeech(text);
+      setIsSpeaking(true);
+      setConnectionStatus('Speaking...');
+      
+      if (videoRef.current) {
+        videoRef.current.muted = true;
+      }
+      if (streamManagerRef.current && didInitialized.current) {
+        streamManagerRef.current.talk(text).catch(err => console.warn('D-ID talk error:', err));
+      }
     }
 
     try {
@@ -119,23 +124,27 @@ const AiPresenter = ({ user }) => {
       audioRef.current.src = audioUrl;
       audioRef.current.onended = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
       audioRef.current.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); };
-      await audioRef.current.play();
+      if (autoPlay) {
+        await audioRef.current.play();
+      }
     } catch (err) {
-      console.warn('ElevenLabs failed, using browser TTS', err);
-      window.speechSynthesis.cancel();
-      const cleanText = text.replace(/[*_`]/g, '');
-      const doSpeak = () => {
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        window.currentUtterance = utterance; // Prevent GC bug
-        const voices = window.speechSynthesis.getVoices();
-        const premiumVoice = voices.find(v => (v.name.includes('Google') && v.lang.startsWith('en')) || (v.name.includes('Natural') && v.lang.startsWith('en')) || v.lang === 'en-US');
-        if (premiumVoice) utterance.voice = premiumVoice;
-        utterance.onend = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
-        utterance.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
-        window.speechSynthesis.speak(utterance);
-      };
-      if (window.speechSynthesis.getVoices().length > 0) doSpeak();
-      else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; setTimeout(doSpeak, 1000); }
+      if (autoPlay) {
+        console.warn('ElevenLabs failed, using browser TTS', err);
+        window.speechSynthesis.cancel();
+        const cleanText = text.replace(/[*_`]/g, '');
+        const doSpeak = () => {
+          const utterance = new SpeechSynthesisUtterance(cleanText);
+          window.currentUtterance = utterance; // Prevent GC bug
+          const voices = window.speechSynthesis.getVoices();
+          const premiumVoice = voices.find(v => (v.name.includes('Google') && v.lang.startsWith('en')) || (v.name.includes('Natural') && v.lang.startsWith('en')) || v.lang === 'en-US');
+          if (premiumVoice) utterance.voice = premiumVoice;
+          utterance.onend = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
+          utterance.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
+          window.speechSynthesis.speak(utterance);
+        };
+        if (window.speechSynthesis.getVoices().length > 0) doSpeak();
+        else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; setTimeout(doSpeak, 1000); }
+      }
     }
   }, []);
 
@@ -328,15 +337,73 @@ const AiPresenter = ({ user }) => {
       const data = await response.json();
       const aiResponse = data.response || 'Unable to summarize the article.';
       
-      setChatMessages(prev => [...prev, { 
-        sender: 'ai', 
-        text: useNotebookLMStyle ? `🎙️ NotebookLM Audio Overview:\n\n${aiResponse}` : `📰 Article Summary:\n\n${aiResponse}` 
-      }]);
-      await speakResponse(aiResponse);
+      if (useNotebookLMStyle) {
+        setIsRenderingPodcast(true);
+        setPodcastProgressPercent(0);
+        setPodcastStage("🎙️ Step 1/4: Analyzing scraped content & structuring script...");
+
+        // Pre-fetch TTS in background (do not play yet)
+        const ttsPromise = speakResponse(aiResponse, false);
+
+        // Run the 20-second timer
+        let seconds = 0;
+        const totalDuration = 20;
+        const timer = setInterval(() => {
+          seconds += 1;
+          const pct = Math.floor((seconds / totalDuration) * 100);
+          setPodcastProgressPercent(pct);
+
+          if (seconds < 5) {
+            setPodcastStage("🎙️ Step 1/4: Analyzing scraped content & structuring script...");
+          } else if (seconds < 10) {
+            setPodcastStage("🧬 Step 2/4: Applying conversational speaker tone and inflection...");
+          } else if (seconds < 15) {
+            setPodcastStage("🎚️ Step 3/4: Balancing frequencies, gain, and noise threshold...");
+          } else if (seconds < 20) {
+            setPodcastStage("💾 Step 4/4: Finalizing master track & packaging into MP3...");
+          } else {
+            clearInterval(timer);
+          }
+        }, 1000);
+
+        // Wait for both timer and TTS promise
+        await Promise.all([
+          new Promise(resolve => setTimeout(resolve, totalDuration * 1000)),
+          ttsPromise.catch(err => console.warn("Background TTS fetch failed:", err))
+        ]);
+
+        setIsRenderingPodcast(false);
+        setChatMessages(prev => [...prev, { 
+          sender: 'ai', 
+          text: `🎙️ NotebookLM Audio Overview:\n\n${aiResponse}` 
+        }]);
+
+        // Start playback and avatar presentation
+        if (audioRef.current && audioRef.current.src) {
+          setCurrentSpeech(aiResponse);
+          setIsSpeaking(true);
+          setConnectionStatus('Speaking...');
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+          }
+          if (streamManagerRef.current && didInitialized.current) {
+            streamManagerRef.current.talk(aiResponse).catch(err => console.warn('D-ID talk error:', err));
+          }
+          audioRef.current.play().catch(e => console.warn("Audio play error:", e));
+        } else {
+          await speakResponse(aiResponse, true);
+        }
+      } else {
+        setChatMessages(prev => [...prev, { 
+          sender: 'ai', 
+          text: `📰 Article Summary:\n\n${aiResponse}` 
+        }]);
+        await speakResponse(aiResponse, true);
+      }
     } catch (err) {
       const msg = `I'm having trouble reading this article. ${err.message || 'Please check the backend connection.'}`;
       setChatMessages(prev => [...prev, { sender: 'ai', text: msg }]);
-      await speakResponse(msg);
+      await speakResponse(msg, true);
     } finally {
       setIsThinking(false);
     }
@@ -645,7 +712,7 @@ const AiPresenter = ({ user }) => {
                     {articleInputType === 'text' ? `${articleText.length} / 1500 chars` : 'URL Input'}
                   </span>
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    {lastAudioBlob && (
+                    {lastAudioBlob && !isRenderingPodcast && (
                       <button
                         className="article-download-btn"
                         onClick={handleDownloadMp3}
@@ -675,12 +742,48 @@ const AiPresenter = ({ user }) => {
                     <button
                       className="article-read-btn"
                       onClick={handleReadArticle}
-                      disabled={articleInputType === 'text' ? (!articleText.trim() || !isSessionStarted || isThinking || isSpeaking) : (!articleUrl.trim() || !isSessionStarted || isThinking || isSpeaking)}
+                      disabled={articleInputType === 'text' ? (!articleText.trim() || !isSessionStarted || isThinking || isSpeaking || isRenderingPodcast) : (!articleUrl.trim() || !isSessionStarted || isThinking || isSpeaking || isRenderingPodcast)}
                     >
-                      {isThinking ? '⏳ Generating Audio...' : useNotebookLMStyle ? '🎙️ Generate Podcast' : '🎙️ Present Article'}
+                      {isRenderingPodcast ? '🎙️ Rendering Podcast...' : isThinking ? '⏳ Generating Audio...' : useNotebookLMStyle ? '🎙️ Generate Podcast' : '🎙️ Present Article'}
                     </button>
                   </div>
                 </div>
+
+                {isRenderingPodcast && (
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid #10b981',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    marginTop: '20px',
+                    textAlign: 'center',
+                    boxShadow: '0 4px 20px rgba(16, 185, 129, 0.15)',
+                  }}>
+                    <div style={{ fontSize: '18px', fontWeight: 600, color: 'white', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <div className="search-spinner" style={{ width: '18px', height: '18px', margin: '0' }}></div>
+                      Rendering Podcast Monologue...
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#a7f3d0', marginBottom: '15px', fontWeight: 500 }}>{podcastStage}</div>
+                    <div style={{
+                      height: '10px',
+                      width: '100%',
+                      background: '#1f2937',
+                      borderRadius: '5px',
+                      overflow: 'hidden',
+                      position: 'relative',
+                      marginBottom: '8px'
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${podcastProgressPercent}%`,
+                        background: 'linear-gradient(90deg, #10b981, #3b82f6)',
+                        borderRadius: '5px',
+                        transition: 'width 0.4s ease'
+                      }}></div>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 600 }}>{podcastProgressPercent}% Complete</div>
+                  </div>
+                )}
 
                 {/* Show conversation log below */}
                 {chatMessages.length > 1 && (
