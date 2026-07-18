@@ -3,6 +3,7 @@ import { API_BASE_URL } from '../config';
 
 const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const getBadgeStyle = (tone) => {
     switch (tone) {
@@ -15,6 +16,21 @@ const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
     }
   };
 
+  const handleToggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isOpen) {
+      setIsOpen(true);
+      setIsAnalyzing(true);
+      setTimeout(() => {
+        setIsAnalyzing(false);
+      }, 1600);
+    } else {
+      setIsOpen(false);
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="bias-badge-container">
       <span className="bias-badge" style={getBadgeStyle(biasTone)}>
@@ -22,18 +38,30 @@ const BiasAnalysis = ({ biasTone, biasAnalysis }) => {
       </span>
       <button 
         className="bias-details-toggle" 
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); }}
+        onClick={handleToggle}
       >
         {isOpen ? '✕ Close' : '🔍 Analyze Bias'}
       </button>
       {isOpen && (
         <div className="bias-details-drawer" onClick={(e) => e.stopPropagation()}>
           <h5>Political Bias & Framing Analysis</h5>
-          <ul>
-            {biasAnalysis.map((bullet, i) => (
-              <li key={i}>{bullet}</li>
-            ))}
-          </ul>
+          {isAnalyzing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#3b82f6', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>
+                <div className="search-spinner" style={{ width: '12px', height: '12px', margin: 0, border: '2px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6' }}></div>
+                Performing AI political bias audit...
+              </div>
+              <div className="skeleton-text" style={{ height: '12px', width: '95%', margin: 0 }}></div>
+              <div className="skeleton-text" style={{ height: '12px', width: '80%', margin: 0 }}></div>
+              <div className="skeleton-text" style={{ height: '12px', width: '88%', margin: 0 }}></div>
+            </div>
+          ) : (
+            <ul>
+              {biasAnalysis && biasAnalysis.map((bullet, i) => (
+                <li key={i}>{bullet}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
