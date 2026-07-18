@@ -43,7 +43,7 @@ except Exception as e:
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
-CACHE_EXPIRY_SECONDS = 600  # 10 minutes
+CACHE_EXPIRY_SECONDS = 1800  # 30 minutes — longer cache = faster repeat loads
 news_cache = {}
 
 # ─────────────────────────────────────────────
@@ -351,88 +351,97 @@ def get_news():
             print(f"Serving cached news from local memory for key: {cache_key}")
             return jsonify(cached_item['data'])
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import xml.etree.ElementTree as ET
+    import re
+    from urllib.parse import quote
+
     raw_articles = []
     sources_used = []
+    sources_lock = __import__('threading').Lock()
 
-    # ── SOURCE 1: CurrentsAPI ──────────────────
-    if CURRENTS_API_KEY:
-        print(f"[Source 1] Fetching CurrentsAPI for {cache_key}...")
+    # ── PARALLEL fetch all 3 sources simultaneously ─────────────────────
+    def fetch_currents():
+        if not CURRENTS_API_KEY:
+            return [], None
         try:
             news_url = "https://api.currentsapi.services/v1/search"
-            if country:
-                params = {"country": country, "language": "en", "page_size": 5}
-            else:
-                params = {"keywords": keyword, "language": "en", "page_size": 5}
+            params = {"country": country, "language": "en", "page_size": 5} if country else {"keywords": keyword, "language": "en", "page_size": 5}
             headers = {"Authorization": f"Bearer {CURRENTS_API_KEY}"}
-            response = requests.get(news_url, headers=headers, params=params, verify=False, timeout=10)
-            news_data = response.json()
-            articles_curr = news_data.get("news", [])
-            for art in articles_curr:
-                raw_articles.append({
-                    "source": "CurrentsAPI",
-                    "id": art.get("id", ""),
-                    "title": art.get("title", ""),
-                    "description": art.get("description", ""),
-                    "url": art.get("url", "#"),
-                    "image": art.get("image", None),
-                    "author": art.get("author", "Staff Reporter") or "Staff Reporter",
-                    "time": art.get("published", "")[:16].replace("T", " ") if art.get("published") else "Recent"
-                })
-            if articles_curr:
-                sources_used.append("CurrentsAPI (currentsapi.services)")
+            response = requests.get(news_url, headers=headers, params=params, verify=False, timeout=8)
+            arts = response.json().get("news", [])
+            result = [{
+                "source": "CurrentsAPI",
+                "id": a.get("id", ""),
+                "title": a.get("title", ""),
+                "description": a.get("description", ""),
+                "url": a.get("url", "#"),
+                "image": a.get("image", None),
+                "author": a.get("author", "Staff Reporter") or "Staff Reporter",
+                "time": a.get("published", "")[:16].replace("T", " ") if a.get("published") else "Recent"
+            } for a in arts]
+            label = "CurrentsAPI (currentsapi.services)" if result else None
+            return result, label
         except Exception as e:
             print(f"[CurrentsAPI error] {e}")
+            return [], None
 
-    # ── SOURCE 2: NewsData.io ──────────────────
-    if NEWSDATA_KEY:
-        print(f"[Source 2] Fetching NewsData.io for {cache_key}...")
+    def fetch_newsdata():
+        if not NEWSDATA_KEY:
+            return [], None
         try:
-            if country:
-                params_nd = {"country": country, "language": "en", "apikey": NEWSDATA_KEY, "size": 5}
-            else:
-                params_nd = {"q": keyword, "language": "en", "apikey": NEWSDATA_KEY, "size": 5}
-            response = requests.get("https://newsdata.io/api/1/news", params=params_nd, verify=False, timeout=10)
+            params_nd = {"country": country, "language": "en", "apikey": NEWSDATA_KEY, "size": 5} if country else {"q": keyword, "language": "en", "apikey": NEWSDATA_KEY, "size": 5}
+            response = requests.get("https://newsdata.io/api/1/news", params=params_nd, verify=False, timeout=8)
             nd_data = response.json()
-            articles_nd = nd_data.get("results", [])
-            for art in articles_nd:
-                raw_articles.append({
-                    "source": "NewsData.io",
-                    "id": art.get("article_id", art.get("link", "")),
-                    "title": art.get("title", ""),
-                    "description": art.get("description", "") or art.get("content", ""),
-                    "url": art.get("link", "#"),
-                    "image": art.get("image_url", None),
-                    "author": (art.get("creator") or ["Staff Reporter"])[0] if art.get("creator") else "Staff Reporter",
-                    "time": art.get("pubDate", "")[:16].replace("T", " ") if art.get("pubDate") else "Recent"
-                })
-            if articles_nd:
-                sources_used.append("NewsData.io (newsdata.io)")
+            arts = nd_data.get("results", [])
+            if not isinstance(arts, list):
+                return [], None
+            result = [{
+                "source": "NewsData.io",
+                "id": a.get("article_id", a.get("link", "")),
+                "title": a.get("title", ""),
+                "description": a.get("description", "") or a.get("content", ""),
+                "url": a.get("link", "#"),
+                "image": a.get("image_url", None),
+                "author": (a.get("creator") or ["Staff Reporter"])[0] if a.get("creator") else "Staff Reporter",
+                "time": a.get("pubDate", "")[:16].replace("T", " ") if a.get("pubDate") else "Recent"
+            } for a in arts]
+            label = "NewsData.io (newsdata.io)" if result else None
+            return result, label
         except Exception as e:
             print(f"[NewsData.io error] {e}")
+            return [], None
 
-    # ── SOURCE 3: GNews (free tier) ───────────
-    print(f"[Source 3] Fetching GNews for {cache_key}...")
-    try:
-        gnews_q = country if country else keyword
-        params_g = {"q": gnews_q, "lang": "en", "max": 5, "apikey": "1b31c10fdab5dc5e8bbbaab9b37a7a36"}
-        response = requests.get("https://gnews.io/api/v4/search", params=params_g, verify=False, timeout=10)
-        gn_data = response.json()
-        articles_gn = gn_data.get("articles", [])
-        for art in articles_gn:
-            raw_articles.append({
+    def fetch_gnews():
+        try:
+            gnews_q = country if country else keyword
+            params_g = {"q": gnews_q, "lang": "en", "max": 5, "apikey": "1b31c10fdab5dc5e8bbbaab9b37a7a36"}
+            response = requests.get("https://gnews.io/api/v4/search", params=params_g, verify=False, timeout=8)
+            arts = response.json().get("articles", [])
+            result = [{
                 "source": "GNews",
-                "id": art.get("url", ""),
-                "title": art.get("title", ""),
-                "description": art.get("description", ""),
-                "url": art.get("url", "#"),
-                "image": art.get("image", None),
-                "author": art.get("source", {}).get("name", "Staff Reporter"),
-                "time": art.get("publishedAt", "")[:16].replace("T", " ") if art.get("publishedAt") else "Recent"
-            })
-        if articles_gn:
-            sources_used.append("GNews (gnews.io)")
-    except Exception as e:
-        print(f"[GNews error] {e}")
+                "id": a.get("url", ""),
+                "title": a.get("title", ""),
+                "description": a.get("description", ""),
+                "url": a.get("url", "#"),
+                "image": a.get("image", None),
+                "author": a.get("source", {}).get("name", "Staff Reporter"),
+                "time": a.get("publishedAt", "")[:16].replace("T", " ") if a.get("publishedAt") else "Recent"
+            } for a in arts]
+            label = "GNews (gnews.io)" if result else None
+            return result, label
+        except Exception as e:
+            print(f"[GNews error] {e}")
+            return [], None
+
+    # Fire all 3 fetches at the same time
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futures = [ex.submit(fetch_currents), ex.submit(fetch_newsdata), ex.submit(fetch_gnews)]
+        for fut in as_completed(futures):
+            arts, label = fut.result()
+            raw_articles.extend(arts)
+            if label:
+                sources_used.append(label)
 
     print(f"[News] Sources fetched: {sources_used}. Total raw articles: {len(raw_articles)}")
 
@@ -450,13 +459,8 @@ def get_news():
     if not merged_articles:
         print("All APIs returned no articles. Scraping live Google News RSS search feed...")
         try:
-            from urllib.parse import quote
-            import xml.etree.ElementTree as ET
-            import re
-
             query = keyword if keyword else (country if country else "world")
             rss_url = f"https://news.google.com/rss/search?q={quote(query)}&hl=en-US&gl=US&ceid=US:en"
-            
             response = requests.get(rss_url, verify=False, timeout=10)
             if response.status_code == 200:
                 root = ET.fromstring(response.content)
@@ -464,28 +468,20 @@ def get_news():
                     title = item.find("title").text if item.find("title") is not None else ""
                     link = item.find("link").text if item.find("link") is not None else "#"
                     pub_date = item.find("pubDate").text if item.find("pubDate") is not None else "Recent"
-                    
                     source_name = "Google News"
                     if " - " in title:
                         parts = title.split(" - ")
                         title = " - ".join(parts[:-1])
                         source_name = parts[-1]
-
                     desc = item.find("description").text if item.find("description") is not None else ""
                     if desc:
                         desc = re.sub(r'<[^>]*>', '', desc)
-                    
                     raw_articles.append({
-                        "source": source_name,
-                        "id": link,
-                        "title": title,
-                        "description": desc if desc else title,
-                        "url": link,
+                        "source": source_name, "id": link, "title": title,
+                        "description": desc if desc else title, "url": link,
                         "image": "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop",
-                        "author": source_name,
-                        "time": pub_date[:16] if pub_date else "Recent"
+                        "author": source_name, "time": pub_date[:16] if pub_date else "Recent"
                     })
-
                 seen_titles = set()
                 for art in raw_articles:
                     title_norm = art["title"].strip().lower() if art["title"] else ""
@@ -504,28 +500,46 @@ def get_news():
 
     merged_articles = merged_articles[:6]
 
-    # AI Bias Analysis
-    processed_articles = []
-    for article in merged_articles:
-        title = article["title"]
-        description = article["description"]
-        safe_title = title[:50].encode('ascii', errors='ignore').decode('ascii')
-        print(f"Analyzing: {safe_title}...")
-        bias_report = analyze_article_bias(title, description)
-        processed_articles.append({
+    # ── PARALLEL AI Bias Analysis for all articles at once ──────────────
+    def analyze_one(article):
+        bias = analyze_article_bias(article["title"], article["description"])
+        return {
             "id": article["id"],
-            "title": title,
-            "description": description,
+            "title": article["title"],
+            "description": article["description"],
             "url": article["url"],
             "image": article["image"] or "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop",
             "author": article["author"],
             "time": article["time"],
             "category": (keyword if keyword else "LOCAL").upper(),
             "source": article["source"],
-            "bias_tone": bias_report["tone"],
-            "bias_analysis": bias_report["analysis"],
+            "bias_tone": bias["tone"],
+            "bias_analysis": bias["analysis"],
             "sources_used": sources_used
-        })
+        }
+
+    processed_articles = [None] * len(merged_articles)
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        future_map = {ex.submit(analyze_one, art): i for i, art in enumerate(merged_articles)}
+        for fut in as_completed(future_map):
+            idx = future_map[fut]
+            try:
+                processed_articles[idx] = fut.result()
+            except Exception as e:
+                print(f"[Bias analysis error] {e}")
+                art = merged_articles[idx]
+                processed_articles[idx] = {
+                    "id": art["id"], "title": art["title"], "description": art["description"],
+                    "url": art["url"], "image": art["image"] or "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=400&fit=crop",
+                    "author": art["author"], "time": art["time"],
+                    "category": (keyword if keyword else "LOCAL").upper(),
+                    "source": art["source"], "bias_tone": "Neutral",
+                    "bias_analysis": ["Analysis unavailable.", "Please try again.", "Neutral coverage assumed."],
+                    "sources_used": sources_used
+                }
+
+    # Filter out any None entries
+    processed_articles = [a for a in processed_articles if a]
 
     news_cache[cache_key] = {"timestamp": now, "data": processed_articles}
     save_supabase_cache(cache_key, processed_articles)
