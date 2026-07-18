@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DIDStreamManager } from '../utils/did-stream';
 import { API_BASE_URL } from '../config';
 
-const AiPresenter = () => {
+const AiPresenter = ({ user }) => {
   const videoRef = useRef(null);
   const streamManagerRef = useRef(null);
   const audioRef = useRef(null);
   const recognitionRef = useRef(null);
+  const latestTranscriptRef = useRef('');
   const didInitialized = useRef(false);
 
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
@@ -24,6 +25,9 @@ const AiPresenter = () => {
 
   // Article reader state
   const [articleText, setArticleText] = useState('');
+  const [articleUrl, setArticleUrl] = useState('');
+  const [articleInputType, setArticleInputType] = useState('text'); // 'text' | 'link'
+  const [useNotebookLMStyle, setUseNotebookLMStyle] = useState(false);
   const [articleTab, setArticleTab] = useState('voice'); // 'voice' | 'article'
 
   const [chatMessages, setChatMessages] = useState([
@@ -84,25 +88,48 @@ const AiPresenter = () => {
     setCurrentSpeech(text);
     setIsSpeaking(true);
     setConnectionStatus('Speaking...');
+    
+    if (videoRef.current) {
+      videoRef.current.muted = true;
+    }
+    if (streamManagerRef.current && didInitialized.current) {
+      streamManagerRef.current.talk(text).catch(err => console.warn('D-ID talk error:', err));
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
       });
-      if (!response.ok) throw new Error('TTS failed');
+      if (!response.ok) throw new Error('ElevenLabs TTS failed');
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
-      if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      audio.onended = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); URL.revokeObjectURL(audioUrl); };
-      audio.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); };
-      await audio.play();
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+      audioRef.current.src = audioUrl;
+      audioRef.current.onended = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); URL.revokeObjectURL(audioUrl); };
+      audioRef.current.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); };
+      await audioRef.current.play();
     } catch (err) {
-      speakWithBrowserTTS(text);
+      console.warn('ElevenLabs failed, using browser TTS', err);
+      window.speechSynthesis.cancel();
+      const cleanText = text.replace(/[*_`]/g, '');
+      const doSpeak = () => {
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        window.currentUtterance = utterance; // Prevent GC bug
+        const voices = window.speechSynthesis.getVoices();
+        const premiumVoice = voices.find(v => (v.name.includes('Google') && v.lang.startsWith('en')) || (v.name.includes('Natural') && v.lang.startsWith('en')) || v.lang === 'en-US');
+        if (premiumVoice) utterance.voice = premiumVoice;
+        utterance.onend = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
+        utterance.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
+        window.speechSynthesis.speak(utterance);
+      };
+      if (window.speechSynthesis.getVoices().length > 0) doSpeak();
+      else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; setTimeout(doSpeak, 1000); }
     }
-  }, [speakWithBrowserTTS]);
+  }, []);
 
   // ── D-ID init ──────────────────────────────────────────────────
   useEffect(() => {
@@ -131,7 +158,7 @@ const AiPresenter = () => {
           } else if (vid && vid.srcObject && vid.paused) {
             vid.play().catch(() => {});
           }
-          if (attempts > 40) clearInterval(checkVideo);
+          // Removing max attempts limitation so it can eventually show if it takes longer than 12s
         }, 300);
       } catch (err) {
         setUseDID(false);
@@ -143,12 +170,18 @@ const AiPresenter = () => {
 
   // ── Session start ──────────────────────────────────────────────
   const handleStartSession = async () => {
+    // Unlock Audio Contexts synchronously on user click to bypass autoplay restrictions
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+    if (!audioRef.current) audioRef.current = new Audio();
+    audioRef.current.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"; // silent wav
+    audioRef.current.play().catch(() => {});
+
     setIsSessionStarted(true);
     setConnectionStatus('Connecting...');
     setTimeout(async () => {
       setConnectionStatus('Emma is ready');
       await speakResponse('Hello! I am Emma, your AI News Presenter from Truth Lens. Hold the microphone button and speak your question, or paste an article for me to read aloud!');
-    }, 400);
+    }, 4000);
   };
 
   const handleStopSpeaking = () => {
@@ -172,32 +205,29 @@ const AiPresenter = () => {
     recognition.maxAlternatives = 1;
     setIsListening(true);
     setVoiceTranscript('');
+    latestTranscriptRef.current = '';
+
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
         .map(r => r[0].transcript)
         .join('');
       setVoiceTranscript(transcript);
+      latestTranscriptRef.current = transcript;
     };
     recognition.onend = () => {
       setIsListening(false);
-      // Auto-send when speech ends
-      const finalTranscript = recognitionRef.current?._finalTranscript || voiceTranscript;
+      const finalTranscript = latestTranscriptRef.current;
       if (finalTranscript.trim()) handleSendVoiceMessage(finalTranscript.trim());
     };
     recognition.onerror = () => {
       setIsListening(false);
       setVoiceTranscript('');
     };
-    // Store transcript for use on end
-    recognition.onspeechend = () => {
-      recognition._finalTranscript = voiceTranscript;
-    };
     recognition.start();
   };
 
   const stopListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current._finalTranscript = voiceTranscript;
       recognitionRef.current.stop();
     }
   };
@@ -211,7 +241,7 @@ const AiPresenter = () => {
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text, email: user?.email })
       });
       const data = await response.json();
       const aiResponse = data.response || 'I could not retrieve a reply. Please try again.';
@@ -228,27 +258,61 @@ const AiPresenter = () => {
 
   // ── Article Reader ─────────────────────────────────────────────
   const handleReadArticle = async () => {
-    if (!articleText.trim() || isThinking) return;
+    let sourceText = "";
+    
     setIsThinking(true);
-    const truncated = articleText.trim().slice(0, 1500);
-    setChatMessages(prev => [...prev, {
-      sender: 'user',
-      text: `📄 [Article submitted for reading]\n\n${truncated.slice(0, 120)}...`
-    }]);
+    
     try {
+      if (articleInputType === 'link') {
+        if (!articleUrl.trim()) return;
+        setChatMessages(prev => [...prev, {
+          sender: 'user',
+          text: `🔗 [Scraping Link]: ${articleUrl}`
+        }]);
+        
+        const scrapeRes = await fetch(`${API_BASE_URL}/api/scrape-article`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: articleUrl })
+        });
+        if (!scrapeRes.ok) throw new Error('Scraping failed');
+        const scrapeData = await scrapeRes.json();
+        sourceText = scrapeData.article || '';
+      } else {
+        if (!articleText.trim()) return;
+        sourceText = articleText.trim();
+        setChatMessages(prev => [...prev, {
+          sender: 'user',
+          text: `📄 [Article submitted for reading]\n\n${sourceText.slice(0, 120)}...`
+        }]);
+      }
+
+      if (!sourceText.trim()) {
+        throw new Error('No article content found');
+      }
+
+      const truncated = sourceText.slice(0, 4000);
+      let prompt = `Please give me a brief, clear spoken summary of this article in 3-4 sentences, as if you are a news presenter reading it on air:\n\n${truncated}`;
+      
+      if (useNotebookLMStyle) {
+        prompt = `You are a podcast host like Google NotebookLM. Generate a deep, engaging, and highly conversational audio overview of this article. Explain the key concepts, highlight what is fascinating, and present it in a lively monologue. Keep it brief (exactly 4-5 sentences of natural, spoken speech). Do not use bullet points, headers, or markdown formatting:\n\n${truncated}`;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Please give me a brief, clear spoken summary of this article in 3-4 sentences, as if you are a news presenter reading it on air:\n\n${truncated}`
-        })
+        body: JSON.stringify({ message: prompt, email: user?.email })
       });
       const data = await response.json();
       const aiResponse = data.response || 'Unable to summarize the article.';
-      setChatMessages(prev => [...prev, { sender: 'ai', text: `📰 Article Summary:\n\n${aiResponse}` }]);
+      
+      setChatMessages(prev => [...prev, { 
+        sender: 'ai', 
+        text: useNotebookLMStyle ? `🎙️ NotebookLM Audio Overview:\n\n${aiResponse}` : `📰 Article Summary:\n\n${aiResponse}` 
+      }]);
       await speakResponse(aiResponse);
     } catch (err) {
-      const msg = "I'm having trouble reading this article. Please check the backend connection.";
+      const msg = `I'm having trouble reading this article. ${err.message || 'Please check the backend connection.'}`;
       setChatMessages(prev => [...prev, { sender: 'ai', text: msg }]);
       await speakResponse(msg);
     } finally {
@@ -319,30 +383,13 @@ const AiPresenter = () => {
                   </div>
 
                   <video ref={videoRef} autoPlay playsInline muted className="did-video-player"
-                    style={{ display: videoReady ? 'block' : 'none' }} />
+                    style={{ opacity: videoReady ? 1 : 0.01, position: videoReady ? 'relative' : 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: videoReady ? 10 : -1 }} />
 
                   {!videoReady && (
-                    <div className="animated-fallback-presenter">
-                      <div className="glowing-avatar-orb-outer">
-                        <div className="glowing-avatar-orb-middle">
-                          <div className={`glowing-avatar-orb-inner ${isSpeaking ? 'speaking' : ''}`}>
-                            <span className="avatar-face-icon">{isListening ? '👂' : isSpeaking ? '🎙️' : '🤖'}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="avatar-waveform-visualizer">
-                        {Array.from({ length: 20 }).map((_, i) => (
-                          <div key={i}
-                            className={`waveform-bar ${(isSpeaking || isListening) ? 'animating' : ''}`}
-                            style={{ animationDelay: `${i * 0.04}s`, animationDuration: `${0.4 + (i % 5) * 0.08}s` }} />
-                        ))}
-                      </div>
-                      <div className="emma-name-badge">
-                        <span className={`live-dot ${(isSpeaking || isListening) ? 'live' : ''}`}></span>
-                        <span className="emma-badge-name">EMMA</span>
-                        <span className="emma-badge-title">
-                          {isListening ? '👂 Listening...' : isSpeaking ? 'Speaking via ElevenLabs AI' : 'AI Presenter · ElevenLabs Voice'}
-                        </span>
+                    <div className="avatar-placeholder-image" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5, backgroundImage: 'url("https://create-images-results.d-id.com/DefaultPresenters/Emma_f/image.png")', backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '12px' }}>
+                      <div className="status-bubble-overlay" style={{ position: 'absolute', top: '10px', left: '10px' }}>
+                        <span className="status-indicator-dot connecting"></span>
+                        Connecting to D-ID stream...
                       </div>
                     </div>
                   )}
@@ -477,27 +524,117 @@ const AiPresenter = () => {
               <div className="article-reader-panel">
                 <div className="article-reader-info">
                   <h4>📋 Article Reader</h4>
-                  <p>Paste any news article below and Emma will briefly summarize and read it aloud like a live broadcast presenter.</p>
+                  <p>Paste an article text or a webpage link below, and Emma will present a highly optimized audio briefing or a NotebookLM-style conversational overview!</p>
                 </div>
-                <textarea
-                  className="article-paste-area"
-                  placeholder="Paste the full article text here...&#10;&#10;Emma will read a short, clear broadcast-style summary of it."
-                  value={articleText}
-                  onChange={e => setArticleText(e.target.value)}
-                  rows={10}
-                  disabled={!isSessionStarted || isThinking || isSpeaking}
-                />
+
+                {/* Input Type Selector */}
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                  <button 
+                    onClick={() => setArticleInputType('text')}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #4b5563',
+                      background: articleInputType === 'text' ? '#3b82f6' : '#1f2937',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 600
+                    }}
+                  >
+                    📄 Paste Article Text
+                  </button>
+                  <button 
+                    onClick={() => setArticleInputType('link')}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #4b5563',
+                      background: articleInputType === 'link' ? '#3b82f6' : '#1f2937',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 600
+                    }}
+                  >
+                    🔗 Paste Webpage Link
+                  </button>
+                </div>
+
+                {articleInputType === 'text' ? (
+                  <textarea
+                    className="article-paste-area"
+                    placeholder="Paste the full article text here...&#10;&#10;Emma will read a short, clear broadcast-style summary of it."
+                    value={articleText}
+                    onChange={e => setArticleText(e.target.value)}
+                    rows={8}
+                    disabled={!isSessionStarted || isThinking || isSpeaking}
+                    style={{ width: '100%', boxSizing: 'border-box', background: '#111827', color: 'white', border: '1px solid #374151', borderRadius: '8px', padding: '10px' }}
+                  />
+                ) : (
+                  <input
+                    type="url"
+                    placeholder="https://example.com/news-article"
+                    value={articleUrl}
+                    onChange={e => setArticleUrl(e.target.value)}
+                    disabled={!isSessionStarted || isThinking || isSpeaking}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      background: '#111827',
+                      color: 'white',
+                      border: '1px solid #374151',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      fontSize: '13px',
+                      marginBottom: '15px'
+                    }}
+                  />
+                )}
+
+                {/* NotebookLM Mode Toggle */}
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  background: 'rgba(59, 130, 246, 0.1)', 
+                  border: '1px dashed #3b82f6', 
+                  borderRadius: '8px', 
+                  padding: '10px', 
+                  marginBottom: '15px' 
+                }}>
+                  <input
+                    type="checkbox"
+                    id="notebooklm-toggle"
+                    checked={useNotebookLMStyle}
+                    onChange={e => setUseNotebookLMStyle(e.target.checked)}
+                    disabled={!isSessionStarted || isThinking || isSpeaking}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                  />
+                  <label htmlFor="notebooklm-toggle" style={{ color: 'white', fontSize: '13px', cursor: 'pointer', fontWeight: 500 }}>
+                    🧠 Enable NotebookLM Podcast Style (Conversational Audio Monologue)
+                  </label>
+                </div>
+
                 <div className="article-reader-actions">
-                  <span className="article-char-count">{articleText.length} / 1500 chars</span>
+                  <span className="article-char-count">
+                    {articleInputType === 'text' ? `${articleText.length} / 1500 chars` : 'URL Input'}
+                  </span>
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="article-clear-btn" onClick={() => setArticleText('')}
-                      disabled={!articleText}>✕ Clear</button>
+                    <button className="article-clear-btn" 
+                      onClick={() => { setArticleText(''); setArticleUrl(''); }}
+                      disabled={articleInputType === 'text' ? !articleText : !articleUrl}
+                    >
+                      ✕ Clear
+                    </button>
                     <button
                       className="article-read-btn"
                       onClick={handleReadArticle}
-                      disabled={!articleText.trim() || !isSessionStarted || isThinking || isSpeaking}
+                      disabled={articleInputType === 'text' ? (!articleText.trim() || !isSessionStarted || isThinking || isSpeaking) : (!articleUrl.trim() || !isSessionStarted || isThinking || isSpeaking)}
                     >
-                      {isThinking ? '⏳ Reading...' : '🎙️ Read This Article'}
+                      {isThinking ? '⏳ Generating Audio...' : useNotebookLMStyle ? '🎙️ Generate Podcast' : '🎙️ Present Article'}
                     </button>
                   </div>
                 </div>

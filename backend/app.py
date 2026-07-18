@@ -50,52 +50,81 @@ news_cache = {}
 # ElevenLabs TTS endpoint
 # ─────────────────────────────────────────────
 @app.route('/api/tts', methods=['POST'])
-def tts():
-    data = request.json or {}
-    text = data.get("text", "").strip()
-    voice_id = data.get("voice_id", ELEVENLABS_VOICE_ID)
-
+def get_tts():
+    text = request.json.get("text", "")
     if not text:
-        return jsonify({"error": "text is required"}), 400
-
-    if not ELEVENLABS_API_KEY:
-        return jsonify({"error": "ElevenLabs API key not configured"}), 503
-
-    try:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-        headers = {
-            "xi-api-key": ELEVENLABS_API_KEY,
-            "Content-Type": "application/json",
-            "Accept": "audio/mpeg"
-        }
-        payload = {
-            "text": text,
-            "model_id": "eleven_turbo_v2_5",
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75,
-                "style": 0.3,
-                "use_speaker_boost": True
+        return jsonify({"error": "No text provided"}), 400
+    
+    # 1. Try ElevenLabs TTS first if API key is present and not a placeholder
+    if ELEVENLABS_API_KEY and not ELEVENLABS_API_KEY.startswith("sk_..."):
+        try:
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+            headers = {
+                "Accept": "audio/mpeg",
+                "Content-Type": "application/json",
+                "xi-api-key": ELEVENLABS_API_KEY
             }
-        }
-        resp = requests.post(url, headers=headers, json=payload, verify=False, timeout=30, stream=True)
+            data = {
+                "text": text,
+                "model_id": "eleven_flash_v2_5",
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.5
+                }
+            }
+            response = requests.post(url, json=data, headers=headers, verify=False, timeout=10)
+            if response.status_code == 200:
+                print("ElevenLabs TTS generation successful.")
+                return Response(response.content, mimetype="audio/mpeg")
+            else:
+                print(f"ElevenLabs TTS failed with status {response.status_code}: {response.text}")
+        except Exception as e:
+            print(f"ElevenLabs TTS error, falling back: {e}")
 
-        if resp.status_code != 200:
-            print(f"[ElevenLabs] Error {resp.status_code}: {resp.text[:300]}")
-            return jsonify({"error": f"ElevenLabs error: {resp.status_code}"}), resp.status_code
-
-        def generate():
-            for chunk in resp.iter_content(chunk_size=4096):
-                if chunk:
-                    yield chunk
-
-        return Response(generate(), mimetype="audio/mpeg",
-                        headers={"Content-Disposition": "inline", "Cache-Control": "no-cache"})
-
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "ElevenLabs request timed out"}), 504
+    # 2. Fallback to Google Translate TTS with SSL verification disabled
+    try:
+        import urllib.parse
+        import re
+        
+        # Split text into chunks of roughly 150 chars to respect Google's limits
+        sentences = re.split(r'(?<=[.!?]) +', text)
+        chunks = []
+        current_chunk = ""
+        for s in sentences:
+            if len(current_chunk) + len(s) < 150:
+                current_chunk += s + " "
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = s + " "
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+            
+        if not chunks:
+            chunks = [text[:150]]
+            
+        full_audio = b""
+        for chunk in chunks:
+            if not chunk: continue
+            url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q={urllib.parse.quote(chunk)}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            try:
+                resp = requests.get(url, headers=headers, verify=False, timeout=5)
+                if resp.status_code == 200:
+                    full_audio += resp.content
+                else:
+                    print(f"Google TTS chunk failed with status {resp.status_code}")
+            except Exception as e:
+                print(f"Error fetching Google TTS chunk: {e}")
+                
+        if full_audio:
+            print("Google TTS fallback generation successful.")
+            return Response(full_audio, mimetype="audio/mpeg")
+        else:
+            return jsonify({"error": "Failed to generate audio"}), 500
+            
     except Exception as e:
-        print(f"[ElevenLabs] Exception: {e}")
+        print(f"TTS Fallback Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ─────────────────────────────────────────────
@@ -257,7 +286,7 @@ def analyze_article_bias(title, description):
     """
 
     try:
-        chat_completion = client.chat.completions.create(
+        chat_completion = chat_with_retry(client, 
             messages=[
                 {"role": "system", "content": "You are an impartial AI news analyst who analyzes political bias and omissions. You output strictly valid JSON."},
                 {"role": "user", "content": prompt}
@@ -562,18 +591,40 @@ def save_location_stats():
 def chat():
     data = request.json or {}
     message = data.get("message", "")
+    email = data.get("email", "default_user")
+    
     if not message:
         return jsonify({"error": "Message is required"}), 400
 
     if not client:
         return jsonify({"response": "I'm sorry, my AI backend is not active. But here is standard advice: always verify your sources!"})
 
+    # Retrieve memories if email is provided
+    memories_str = ""
+    if email and email != "default_user":
+        try:
+            from mem0 import MemoryClient
+            mem0_key = os.environ.get("MEMORY_API_KEY", "m0-AyoE7OGhjJ5DKJY6MHYQ4qeNH1BOEZt3xQPbp6Ys")
+            m_client = MemoryClient(api_key=mem0_key)
+            memories = m_client.get_all(filters={"user_id": email})
+            if memories and "results" in memories:
+                facts = [m["memory"] for m in memories["results"]]
+                if facts:
+                    memories_str = "\n".join(f"- {f}" for f in facts)
+                    print(f"[Presenter Chat] Loaded memories for {email}: {memories_str}")
+        except Exception as e:
+            print(f"[Presenter Chat] Error loading memories: {e}")
+
+    system_content = "You are Emma, a professional AI news presenter for The Meridian. Keep your responses engaging, articulate, and under 3 sentences so they are suitable for speaking aloud."
+    if memories_str:
+        system_content += f"\n\nUser Information (Memories from past interactions):\n{memories_str}"
+
     try:
-        chat_completion = client.chat.completions.create(
+        chat_completion = chat_with_retry(client, 
             messages=[
                 {
                     "role": "system",
-                    "content": "You are Emma, a professional AI news presenter for The Meridian. Keep your responses engaging, articulate, and under 3 sentences so they are suitable for speaking aloud."
+                    "content": system_content
                 },
                 {"role": "user", "content": message}
             ],
@@ -581,15 +632,234 @@ def chat():
             temperature=0.7,
         )
         response_text = chat_completion.choices[0].message.content
+
+        # Save message context asynchronously in a background thread to prevent latency
+        if email and email != "default_user":
+            try:
+                import threading
+                def save_mem():
+                    try:
+                        from mem0 import MemoryClient
+                        mem0_key = os.environ.get("MEMORY_API_KEY", "m0-AyoE7OGhjJ5DKJY6MHYQ4qeNH1BOEZt3xQPbp6Ys")
+                        m_client = MemoryClient(api_key=mem0_key)
+                        m_client.add(message, user_id=email)
+                        print(f"[Presenter Chat] Saved memory for {email}: {message}")
+                    except Exception as ex:
+                        print(f"[Presenter Chat] Error saving memory: {ex}")
+                threading.Thread(target=save_mem, daemon=True).start()
+            except Exception as e:
+                print(f"[Presenter Chat] Thread launch error: {e}")
+
         return jsonify({"response": response_text})
     except Exception as e:
         return jsonify({"response": f"I encountered an error: {e}"})
+
+@app.route('/api/article-read', methods=['POST'])
+def article_read():
+    data = request.json or {}
+    url = (data.get('url') or '').strip()
+    text = (data.get('text') or '').strip()
+
+    if not url and not text:
+        return jsonify({'error': 'Please provide article text or a URL.'}), 400
+
+    if not article_groq_client:
+        return jsonify({'error': 'Article AI client not initialized.'}), 503
+
+    article_title = 'Provided Article'
+    article_content = text
+
+    if url:
+        try:
+            if 'wikipedia.org/wiki/' in url:
+                content, title = fetch_wikipedia_text(url)
+                if not content:
+                    return jsonify({'error': title}), 400
+                article_content = content
+                article_title = title
+            else:
+                article_content = fetch_generic_url_text(url)
+                article_title = url
+        except Exception as e:
+            return jsonify({'error': f'Failed to fetch URL: {str(e)}'}), 400
+
+    prompt = f"""You are an alert news presenter. Read the article briefly and give a crisp 2-3 sentence summary that a listener can understand instantly. Keep it engaging and natural.
+
+Title: {article_title}
+
+Article:
+{article_content[:3000]}
+"""
+
+    try:
+        completion = article_groq_chat_with_retry(client, 
+            messages=[
+                {'role': 'system', 'content': 'You are a concise AI news reader that produces short, clear summaries for audio playback.'},
+                {'role': 'user', 'content': prompt}
+            ],
+            model='llama-3.3-70b-versatile',
+            temperature=0.4,
+            max_tokens=300,
+        )
+        summary = completion.choices[0].message.content.strip()
+        return jsonify({'summary': summary, 'title': article_title})
+    except Exception as e:
+        print(f'[ArticleRead] Groq summary error: {e}')
+        return jsonify({'error': f'Failed to summarize article: {str(e)}'}), 500
+
+# ─────────────────────────────────────────────────────────────────────
+# Wikipedia / URL Article Analyzer with dedicated Groq key
+# ─────────────────────────────────────────────────────────────────────
+ARTICLE_GROQ_KEY = os.environ.get("ARTICLE_GROQ_KEY", os.environ.get("GROQ_API_KEY", ""))
+
+try:
+    article_http_client = httpx.Client(verify=False)
+    article_groq_client = Groq(api_key=ARTICLE_GROQ_KEY, http_client=article_http_client)
+    print("[ArticleAI] Dedicated Groq client initialized successfully.")
+except Exception as e:
+    article_groq_client = None
+    print(f"[ArticleAI] Failed to initialize dedicated Groq client: {e}")
+
+
+def fetch_wikipedia_text(url):
+    """Extract clean text from a Wikipedia URL using the MediaWiki API."""
+    import re
+    from urllib.parse import urlparse, unquote
+
+    parsed = urlparse(url)
+    # Extract article title from URL path e.g. /wiki/Artificial_intelligence
+    path = parsed.path
+    title_match = re.search(r'/wiki/(.+)', path)
+    if not title_match:
+        return None, "Could not parse Wikipedia article title from URL."
+
+    title = unquote(title_match.group(1)).replace('_', ' ')
+    lang = parsed.hostname.split('.')[0] if parsed.hostname else 'en'
+
+    api_url = f"https://{lang}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "titles": title,
+        "prop": "extracts",
+        "explaintext": True,
+        "exsectionformat": "plain",
+        "format": "json",
+        "redirects": 1,
+    }
+
+    resp = requests.get(api_url, params=params, verify=False, timeout=15)
+    data = resp.json()
+    pages = data.get("query", {}).get("pages", {})
+    for page_id, page in pages.items():
+        if page_id == "-1":
+            return None, f"Wikipedia article not found: {title}"
+        extract = page.get("extract", "")
+        # Limit to ~4000 chars for analysis
+        return extract[:4000], title
+
+    return None, "Failed to retrieve Wikipedia content."
+
+
+def fetch_generic_url_text(url):
+    """Fetch and extract readable text from any generic web URL."""
+    import re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+    }
+    resp = requests.get(url, headers=headers, verify=False, timeout=15)
+    resp.raise_for_status()
+    # Strip HTML tags
+    text = re.sub(r'<script[^>]*>[\s\S]*?</script>', ' ', resp.text)
+    text = re.sub(r'<style[^>]*>[\s\S]*?</style>', ' ', text)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text[:4000]
+
+
+@app.route('/api/article-analyze', methods=['POST'])
+def analyze_article():
+    data = request.json or {}
+    url = (data.get("url") or "").strip()
+    raw_text = (data.get("text") or "").strip()
+
+    if not url and not raw_text:
+        return jsonify({"error": "Either a URL or article text is required."}), 400
+
+    if not article_groq_client:
+        return jsonify({"error": "Article AI client not initialized."}), 503
+
+    article_title = "Provided Article"
+    article_content = raw_text
+
+    # ── Fetch content from URL ────────────────────────────────────
+    if url:
+        try:
+            if "wikipedia.org/wiki/" in url:
+                content, title = fetch_wikipedia_text(url)
+                if not content:
+                    return jsonify({"error": title}), 400
+                article_content = content
+                article_title = title
+                print(f"[ArticleAI] Fetched Wikipedia: {article_title} ({len(article_content)} chars)")
+            else:
+                article_content = fetch_generic_url_text(url)
+                article_title = url
+                print(f"[ArticleAI] Fetched generic URL: {url} ({len(article_content)} chars)")
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch URL: {str(e)}"}), 400
+
+    # ── Deep Bias + Research Analysis via dedicated Groq key ──────
+    system_prompt = """You are TruthLens ArticleAI, an expert investigative journalist and political analyst.
+Your job is to perform a thorough, multi-dimensional bias and research analysis of any article, Wikipedia page, or text.
+
+When analyzing, cover ALL of the following:
+1. **Political Bias**: Is it Left, Right, or Center? Cite specific phrases or word choices.
+2. **Source Framing**: What narrative does this article push? What is omitted?
+3. **Factual Accuracy Check**: Which key claims are factually solid vs. questionable?
+4. **Historical Context**: What broader context is missing or underemphasized?
+5. **Perspectives Missing**: What viewpoints or voices are absent from this article?
+6. **Language & Tone Analysis**: Is the language neutral, charged, emotional, or propagandistic?
+7. **Summary Verdict**: Overall bias score (1-10 scale where 1=Far Left, 10=Far Right, 5=Neutral) and a one-line verdict.
+
+Format your response clearly with bold headings for each section. Be concise but thorough."""
+
+    user_prompt = f"""Please analyze this article for bias, framing, and research quality:
+
+**Title:** {article_title}
+
+**Content:**
+{article_content[:3500]}
+
+Provide a structured bias and research analysis as per your instructions."""
+
+    try:
+        completion = article_groq_chat_with_retry(client, 
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.4,
+            max_tokens=1200,
+        )
+        analysis = completion.choices[0].message.content
+        return jsonify({
+            "title": article_title,
+            "analysis": analysis,
+            "content_length": len(article_content),
+            "source_type": "wikipedia" if "wikipedia.org/wiki/" in url else ("url" if url else "text")
+        })
+    except Exception as e:
+        print(f"[ArticleAI] Groq analysis error: {e}")
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+
 
 @app.route('/api/assistant', methods=['POST'])
 def assistant_chat():
     data = request.json or {}
     message = data.get("message", "")
     history = data.get("history", [])
+    email = data.get("email", "default_user")
 
     if not message:
         return jsonify({"error": "Message is required"}), 400
@@ -597,11 +867,31 @@ def assistant_chat():
     if not client:
         return jsonify({"response": "I'm sorry, my AI backend is not active. Please check your GROQ_API_KEY."})
 
+    # Retrieve memories if email is provided
+    memories_str = ""
+    if email and email != "default_user":
+        try:
+            from mem0 import MemoryClient
+            mem0_key = os.environ.get("MEMORY_API_KEY", "m0-AyoE7OGhjJ5DKJY6MHYQ4qeNH1BOEZt3xQPbp6Ys")
+            m_client = MemoryClient(api_key=mem0_key)
+            memories = m_client.get_all(filters={"user_id": email})
+            if memories and "results" in memories:
+                facts = [m["memory"] for m in memories["results"]]
+                if facts:
+                    memories_str = "\n".join(f"- {f}" for f in facts)
+                    print(f"[Assistant Chat] Loaded memories for {email}: {memories_str}")
+        except Exception as e:
+            print(f"[Assistant Chat] Error loading memories: {e}")
+
+    system_content = "You are Nexus, a highly intelligent, helpful, and premium personal AI assistant built into The Meridian. You help the user analyze news trends, answer general queries, draft reports, explain complex world events, and assist with personal productivity. Keep your tone professional, articulate, and insightful. You are allowed to write detailed, structured, and formatted markdown responses."
+    if memories_str:
+        system_content += f"\n\nUser Information (Memories from past interactions):\n{memories_str}"
+
     try:
         messages = [
             {
                 "role": "system",
-                "content": "You are Nexus, a highly intelligent, helpful, and premium personal AI assistant built into The Meridian. You help the user analyze news trends, answer general queries, draft reports, explain complex world events, and assist with personal productivity. Keep your tone professional, articulate, and insightful. You are allowed to write detailed, structured, and formatted markdown responses."
+                "content": system_content
             }
         ]
 
@@ -613,17 +903,49 @@ def assistant_chat():
 
         messages.append({"role": "user", "content": message})
 
-        chat_completion = client.chat.completions.create(
+        chat_completion = chat_with_retry(client, 
             messages=messages,
             model="llama-3.1-8b-instant",
             temperature=0.7,
         )
         response_text = chat_completion.choices[0].message.content
+
+        # Save message context asynchronously in a background thread to prevent latency
+        if email and email != "default_user":
+            try:
+                import threading
+                def save_mem():
+                    try:
+                        from mem0 import MemoryClient
+                        mem0_key = os.environ.get("MEMORY_API_KEY", "m0-AyoE7OGhjJ5DKJY6MHYQ4qeNH1BOEZt3xQPbp6Ys")
+                        m_client = MemoryClient(api_key=mem0_key)
+                        m_client.add(message, user_id=email)
+                        print(f"[Assistant Chat] Saved memory for {email}: {message}")
+                    except Exception as ex:
+                        print(f"[Assistant Chat] Error saving memory: {ex}")
+                threading.Thread(target=save_mem, daemon=True).start()
+            except Exception as e:
+                print(f"[Assistant Chat] Thread launch error: {e}")
+
         return jsonify({"response": response_text})
     except Exception as e:
         print(f"[Assistant error] {e}")
         return jsonify({"response": f"I encountered an error: {e}"})
 
+
+
+def chat_with_retry(client, *args, **kwargs):
+    import time
+    max_retries = 3
+    for i in range(max_retries):
+        try:
+            return client.chat.completions.create(*args, **kwargs)
+        except Exception as e:
+            if '429' in str(e) or 'Rate limit' in str(e):
+                if i < max_retries - 1:
+                    time.sleep(3)
+                    continue
+            raise e
 
 import base64
 
@@ -918,6 +1240,42 @@ def get_fallback_articles(topic="world"):
             "sources_used": []
         }
     ]
+
+@app.route('/api/scrape-article', methods=['POST'])
+def scrape_article():
+    url = request.json.get("url", "")
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = requests.get(url, headers=headers, verify=False, timeout=10)
+        if resp.status_code != 200:
+            return jsonify({"error": f"Failed to fetch webpage: Status {resp.status_code}"}), 400
+            
+        html = resp.text
+        import re
+        html = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', html, flags=re.I)
+        html = re.sub(r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>', '', html, flags=re.I)
+        text = re.sub(r'<[^>]+>', ' ', html)
+        text = re.sub(r'\s+', ' ', text).strip()
+        truncated_text = text[:12000]
+        
+        prompt = (
+            "You are a web parsing AI. Extract the main article text and title from the following noisy text. "
+            "Ignore website navigation, ads, and footers. Do not summarize yet, just output the clean content of the article.\n\n"
+            f"Content:\n{truncated_text}"
+        )
+        
+        completion = chat_with_retry(client, 
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1
+        )
+        article_content = completion.choices[0].message.content
+        return jsonify({"article": article_content})
+    except Exception as e:
+        print(f"[Scrape error] {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
