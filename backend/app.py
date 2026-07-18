@@ -32,7 +32,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 # NewsData.io API key (pub_... format)
 NEWSDATA_KEY = os.environ.get("NEWSAPI_KEY", "pub_bccd32094e1d4c428735a806d84d71fc")
 # ElevenLabs TTS key
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_bc22642e245df2a68fe62c0d4063a5f27c250693e3011204")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_380904d5c047e5de307ecf7d491921867d4920ea141cc8e7")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # Sarah - natural female voice
 
 # Initialize Groq Client
