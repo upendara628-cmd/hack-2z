@@ -34,6 +34,8 @@ const AiPresenter = ({ user }) => {
     { sender: 'ai', text: 'Hello! I am Emma, your AI News Presenter. Click "Initialize" to start, then hold the 🎤 mic button and speak your question — or paste any article for me to read!' }
   ]);
   const [newsSources, setNewsSources] = useState(null);
+  const [lastAudioBlob, setLastAudioBlob] = useState(null);
+  const [lastAudioUrl, setLastAudioUrl] = useState(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -57,8 +59,9 @@ const AiPresenter = ({ user }) => {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
       if (recognitionRef.current) recognitionRef.current.abort();
       window.speechSynthesis.cancel();
+      if (lastAudioUrl) URL.revokeObjectURL(lastAudioUrl);
     };
-  }, []);
+  }, [lastAudioUrl]);
 
   // ── ElevenLabs TTS ─────────────────────────────────────────────
   const speakWithBrowserTTS = useCallback((text) => {
@@ -105,11 +108,16 @@ const AiPresenter = ({ user }) => {
       if (!response.ok) throw new Error('ElevenLabs TTS failed');
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
+      setLastAudioBlob(audioBlob);
+      setLastAudioUrl(prevUrl => {
+        if (prevUrl) URL.revokeObjectURL(prevUrl);
+        return audioUrl;
+      });
       if (!audioRef.current) {
         audioRef.current = new Audio();
       }
       audioRef.current.src = audioUrl;
-      audioRef.current.onended = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); URL.revokeObjectURL(audioUrl); };
+      audioRef.current.onended = () => { setIsSpeaking(false); setCurrentSpeech(''); setConnectionStatus('Emma is ready'); };
       audioRef.current.onerror = () => { setIsSpeaking(false); setCurrentSpeech(''); };
       await audioRef.current.play();
     } catch (err) {
@@ -255,6 +263,17 @@ const AiPresenter = ({ user }) => {
       setIsThinking(false);
     }
   }, [isThinking, speakResponse]);
+
+  const handleDownloadMp3 = () => {
+    if (!lastAudioBlob) return;
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = lastAudioUrl;
+    a.download = `podcast_${Date.now()}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   // ── Article Reader ─────────────────────────────────────────────
   const handleReadArticle = async () => {
@@ -626,6 +645,27 @@ const AiPresenter = ({ user }) => {
                     {articleInputType === 'text' ? `${articleText.length} / 1500 chars` : 'URL Input'}
                   </span>
                   <div style={{ display: 'flex', gap: '10px' }}>
+                    {lastAudioBlob && (
+                      <button
+                        className="article-download-btn"
+                        onClick={handleDownloadMp3}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid #10b981',
+                          background: '#059669',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        📥 Download MP3
+                      </button>
+                    )}
                     <button className="article-clear-btn" 
                       onClick={() => { setArticleText(''); setArticleUrl(''); }}
                       disabled={articleInputType === 'text' ? !articleText : !articleUrl}
