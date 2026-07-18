@@ -2021,6 +2021,25 @@
 }
 
 
+/* Article Reader Panel */
+.article-reader-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.article-reader-panel textarea,
+.article-reader-panel input {
+  font-family: inherit;
+  outline: none;
+}
+
+.article-reader-panel textarea:focus,
+.article-reader-panel input:focus {
+  border-color: #c41e3a;
+  box-shadow: 0 0 0 3px rgba(196, 30, 58, 0.08);
+}
+
 /* Article Speaking Button and Highlighting */
 .speak-article-badge-row {
   display: flex;

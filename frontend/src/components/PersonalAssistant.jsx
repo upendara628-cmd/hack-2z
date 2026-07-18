@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
 import { Room, RoomEvent } from 'livekit-client';
 
-const PersonalAssistant = () => {
+const PersonalAssistant = ({ user }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -18,6 +18,7 @@ const PersonalAssistant = () => {
   const chatEndRef = useRef(null);
   const audioRef = useRef(null);
   const roomRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const suggestedPrompts = [
     { label: '📰 Summarize Tech News', prompt: "Draft a briefing summarizing the top technology and semiconductor news from today." },
@@ -54,63 +55,49 @@ const PersonalAssistant = () => {
   };
 
   const handleStartCall = async () => {
-    setCallStatus('Requesting token...');
-    setIsInCall(true);
-    
-    // Stop ElevenLabs chat narration if active
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-
     try {
-      const res = await fetch(`${API_BASE_URL}/api/livekit-token`, {
+      setCallStatus('Requesting token...');
+      const response = await fetch(`${API_BASE_URL}/api/livekit-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           roomName: `nexus-room-${Math.random().toString(36).substring(7)}`,
-          participantName: `user-${Math.random().toString(36).substring(7)}`
+          participantName: user?.email || `user-${Math.random().toString(36).substring(7)}`
         })
       });
-      
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to get token');
-      }
-      const { token, serverUrl } = await res.json();
-      
-      setCallStatus('Connecting to LiveKit...');
+      if (!response.ok) throw new Error('Failed to fetch token');
+      const data = await response.json();
+      const { token, serverUrl } = data;
+
+      setCallStatus('Connecting to room...');
       const room = new Room();
       roomRef.current = room;
-      
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === 'audio') {
-          const el = track.attach();
-          el.play().catch(e => console.warn("Autoplay audio failed:", e));
-        }
+
+      room.on(RoomEvent.Connected, () => {
+        setCallStatus('Connected');
+        setIsInCall(true);
+        room.localParticipant.setMicrophoneEnabled(true).catch(e => console.error("Mic error:", e));
       });
 
       room.on(RoomEvent.Disconnected, () => {
-        setIsInCall(false);
         setCallStatus('Disconnected');
+        setIsInCall(false);
         roomRef.current = null;
       });
 
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === 'audio') {
+          const audioElement = track.attach();
+          audioElement.autoplay = true;
+          document.body.appendChild(audioElement);
+          audioElement.play().catch(e => console.warn("LiveKit audio play failed:", e));
+        }
+      });
+
       await room.connect(serverUrl, token);
-      setCallStatus('Connecting audio...');
-      
-      await room.localParticipant.setMicrophoneEnabled(true);
-      setCallStatus('Connected');
-    } catch (err) {
-      console.error('LiveKit connection failed:', err);
-      setCallStatus(`Error: ${err.message}`);
-      setIsInCall(false);
-      if (roomRef.current) {
-        roomRef.current.disconnect();
-        roomRef.current = null;
-      }
+    } catch (error) {
+      console.error('LiveKit connection failed:', error);
+      setCallStatus('Connection failed');
     }
   };
 
@@ -121,7 +108,6 @@ const PersonalAssistant = () => {
     }
     window.speechSynthesis.cancel();
 
-    // Strip markdown formatting for cleaner speech synthesis
     const cleanText = text
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/__(.*?)__/g, '$1')
@@ -138,42 +124,39 @@ const PersonalAssistant = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: cleanText })
       });
-
       if (!response.ok) throw new Error('ElevenLabs TTS failed');
-
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-
-      await audio.play();
+      if (!audioRef.current) audioRef.current = new Audio();
+      audioRef.current.src = audioUrl;
+      audioRef.current.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(audioUrl); };
+      audioRef.current.onerror = () => { setIsSpeaking(false); };
+      await audioRef.current.play();
     } catch (err) {
-      console.warn('ElevenLabs TTS failed, falling back to browser SpeechSynthesis:', err);
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      const voices = window.speechSynthesis.getVoices();
-      const premiumVoice = voices.find(v => 
-        v.name.includes('Google') && v.lang.startsWith('en') || 
-        v.name.includes('Natural') && v.lang.startsWith('en') ||
-        v.lang.startsWith('en-US')
-      );
-      if (premiumVoice) utterance.voice = premiumVoice;
-
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utterance);
+      console.warn('ElevenLabs failed, using browser TTS', err);
+      const doSpeak = () => {
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        window.currentUtterance = utterance; // Prevent garbage collection bug in Chrome
+        const voices = window.speechSynthesis.getVoices();
+        const premiumVoice = voices.find(v => (v.name.includes('Google') && v.lang.startsWith('en')) || v.lang === 'en-US');
+        if (premiumVoice) utterance.voice = premiumVoice;
+        utterance.rate = 1.0;
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      };
+      if (window.speechSynthesis.getVoices().length > 0) doSpeak();
+      else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; setTimeout(doSpeak, 1000); }
     }
   };
 
   const handleSendMessage = async (textToSend) => {
+    // Unlock audio context synchronously
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+    if (!audioRef.current) audioRef.current = new Audio();
+    audioRef.current.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+    audioRef.current.play().catch(() => {});
+
     const query = textToSend || input;
     if (!query.trim()) return;
 
@@ -202,7 +185,8 @@ const PersonalAssistant = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: query,
-          history: historyToSend
+          history: historyToSend,
+          email: user?.email
         })
       });
 

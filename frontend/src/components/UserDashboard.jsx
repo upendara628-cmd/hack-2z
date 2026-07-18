@@ -49,6 +49,12 @@ const UserDashboard = ({ user, onSignOut }) => {
   const [articles, setArticles] = useState([]);
   const [biasStats, setBiasStats] = useState({ left: 0, right: 0, neutral: 0 });
   const [speakingId, setSpeakingId] = useState(null);
+  const [articleInput, setArticleInput] = useState('');
+  const [articleUrl, setArticleUrl] = useState('');
+  const [articleSummary, setArticleSummary] = useState('');
+  const [articleSummaryTitle, setArticleSummaryTitle] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
 
   useEffect(() => {
     // 1. Get location
@@ -172,6 +178,51 @@ const UserDashboard = ({ user, onSignOut }) => {
     };
   }, []);
 
+  const speakText = async (text, label = 'AI news readout') => {
+    if (!text) return;
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `${label}. ${text}` })
+      });
+
+      if (!response.ok) throw new Error('ElevenLabs TTS failed');
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await audio.play();
+    } catch (err) {
+      console.warn('ElevenLabs TTS failed, falling back to browser SpeechSynthesis:', err);
+      const utterance = new SpeechSynthesisUtterance(`${label}. ${text}`);
+      const voices = window.speechSynthesis.getVoices();
+      const premiumVoice = voices.find(v => 
+        (v.name.includes('Google') && v.lang.startsWith('en')) ||
+        (v.name.includes('Natural') && v.lang.startsWith('en')) ||
+        v.lang.startsWith('en-US')
+      );
+      if (premiumVoice) utterance.voice = premiumVoice;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
   const handleSpeak = async (e, article) => {
     e.preventDefault();
     e.stopPropagation();
@@ -224,8 +275,8 @@ const UserDashboard = ({ user, onSignOut }) => {
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         const voices = window.speechSynthesis.getVoices();
         const premiumVoice = voices.find(v => 
-          v.name.includes('Google') && v.lang.startsWith('en') || 
-          v.name.includes('Natural') && v.lang.startsWith('en') ||
+          (v.name.includes('Google') && v.lang.startsWith('en')) || 
+          (v.name.includes('Natural') && v.lang.startsWith('en')) ||
           v.lang.startsWith('en-US')
         );
         if (premiumVoice) utterance.voice = premiumVoice;
@@ -234,6 +285,36 @@ const UserDashboard = ({ user, onSignOut }) => {
         utterance.onerror = () => setSpeakingId(null);
         window.speechSynthesis.speak(utterance);
       }
+    }
+  };
+
+  const handleArticleRead = async () => {
+    if (!articleInput.trim() && !articleUrl.trim()) {
+      setSummaryError('Please paste article text or a URL.');
+      return;
+    }
+
+    setSummaryLoading(true);
+    setSummaryError('');
+    setArticleSummary('');
+    setArticleSummaryTitle('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/article-read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: articleInput.trim(), url: articleUrl.trim() })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to read article.');
+
+      setArticleSummaryTitle(data.title || 'Your article');
+      setArticleSummary(data.summary || '');
+    } catch (err) {
+      setSummaryError(err.message || 'Unable to read article right now.');
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
@@ -394,8 +475,53 @@ const UserDashboard = ({ user, onSignOut }) => {
         </div>
       </div>
 
-      {/* Local News List */}
       <div className="dashboard-articles-section">
+        <div className="location-panel article-reader-panel" style={{ marginBottom: '24px' }}>
+          <h2 className="panel-title">🗣️ AI Article Reader</h2>
+          <p style={{ margin: 0, color: '#475569', fontSize: '14px' }}>
+            Paste an article or share a link and the assistant will give you a brief, speaker-friendly summary.
+          </p>
+          <textarea
+            value={articleInput}
+            onChange={(e) => setArticleInput(e.target.value)}
+            placeholder="Paste article text here..."
+            rows={6}
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', resize: 'vertical' }}
+          />
+          <input
+            type="url"
+            value={articleUrl}
+            onChange={(e) => setArticleUrl(e.target.value)}
+            placeholder="Or paste a URL"
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+          />
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleArticleRead}
+              className="signout-btn"
+              style={{ marginTop: 0, width: 'auto', padding: '10px 16px' }}
+            >
+              {summaryLoading ? 'Reading…' : 'Read Article'}
+            </button>
+            {articleSummary && (
+              <button
+                onClick={() => speakText(articleSummary, articleSummaryTitle)}
+                className="article-speak-btn"
+                style={{ marginTop: 0 }}
+              >
+                🔊 Listen
+              </button>
+            )}
+          </div>
+          {summaryError && <p style={{ margin: 0, color: '#b91c1c', fontSize: '14px' }}>{summaryError}</p>}
+          {articleSummary && (
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: '#c41e3a', textTransform: 'uppercase', marginBottom: '6px' }}>{articleSummaryTitle}</div>
+              <p style={{ margin: 0, lineHeight: 1.6, color: '#334155' }}>{articleSummary}</p>
+            </div>
+          )}
+        </div>
+
         <h2 className="dashboard-articles-title">📰 Headlines Near You ({locationName.split(',')[0]})</h2>
         
         {loading ? (

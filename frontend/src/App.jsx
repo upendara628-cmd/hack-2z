@@ -117,9 +117,8 @@ function App() {
         <UserDashboard user={user} onSignOut={() => { setUser(null); setCurrentPage('home'); }} />
       )}
 
-      {currentPage === 'ai-avatar' && <AiPresenter />}
-
-      {currentPage === 'personal-assistant' && <PersonalAssistant />}
+      {currentPage === 'ai-avatar' && <AiPresenter user={user} />}
+      {currentPage === 'personal-assistant' && <PersonalAssistant user={user} />}
 
       {currentPage === 'globe' && <GlobeView />}
 

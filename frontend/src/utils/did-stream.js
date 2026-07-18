@@ -74,23 +74,14 @@ export class DIDStreamManager {
 
             // Ensure the video plays (required for WebRTC streams)
             const playVideo = () => {
+              this.videoElement.muted = true; // Keep muted to prevent duplicate voice (Jenny voice)
               this.videoElement.play()
                 .then(() => {
-                  console.log('[D-ID] ✅ Video is playing!');
+                  console.log('[D-ID] ✅ Video is playing (muted)!');
                   this.onStatusChange('Connected');
                 })
                 .catch(err => {
-                  console.warn('[D-ID] Video autoplay blocked, retrying muted:', err);
-                  // Try muted first to bypass autoplay policy, then unmute
-                  this.videoElement.muted = true;
-                  this.videoElement.play()
-                    .then(() => {
-                      console.log('[D-ID] ✅ Video playing (muted, will unmute)');
-                      this.onStatusChange('Connected');
-                      // Unmute after a short delay
-                      setTimeout(() => { if (this.videoElement) this.videoElement.muted = false; }, 500);
-                    })
-                    .catch(e => console.error('[D-ID] Video play failed:', e));
+                  console.error('[D-ID] Video play failed:', err);
                 });
             };
 
