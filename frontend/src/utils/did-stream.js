@@ -74,19 +74,25 @@ export class DIDStreamManager {
 
             // Ensure the video plays (required for WebRTC streams)
             const playVideo = () => {
-              this.videoElement.muted = true; // Keep muted to prevent duplicate voice (Jenny voice)
+              if (!this.videoElement) return;
+              this.videoElement.muted = true; // Keep muted to prevent duplicate voice
               this.videoElement.play()
                 .then(() => {
                   console.log('[D-ID] ✅ Video is playing (muted)!');
                   this.onStatusChange('Connected');
                 })
                 .catch(err => {
-                  console.error('[D-ID] Video play failed:', err);
+                  if (err.name === 'AbortError') {
+                    console.log('[D-ID] Play aborted by stream load. Retrying in 250ms...');
+                    setTimeout(playVideo, 250);
+                  } else {
+                    console.error('[D-ID] Video play failed:', err);
+                  }
                 });
             };
 
             // Small delay to let the stream stabilize
-            setTimeout(playVideo, 100);
+            setTimeout(playVideo, 150);
           }
         }
       };
