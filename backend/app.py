@@ -1257,9 +1257,16 @@ def get_fallback_articles(topic="world"):
 
 @app.route('/api/scrape-article', methods=['POST'])
 def scrape_article():
-    url = request.json.get("url", "")
+    import traceback
+    import sys
+    url = request.json.get("url", "").strip()
     if not url:
         return jsonify({"error": "URL is required"}), 400
+        
+    # Auto-prepend scheme if missing
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+        
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         resp = requests.get(url, headers=headers, verify=False, timeout=10)
@@ -1268,19 +1275,48 @@ def scrape_article():
             
         html = resp.text
         import re
-        html = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', html, flags=re.I)
-        html = re.sub(r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>', '', html, flags=re.I)
-        text = re.sub(r'<[^>]+>', ' ', html)
+        
+        # Strip noisy blocks
+        html = re.sub(r'<head\b[^<]*(?:(?!<\/head>)<[^<]*)*<\/head>', '', html, flags=re.I | re.S)
+        html = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', html, flags=re.I | re.S)
+        html = re.sub(r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>', '', html, flags=re.I | re.S)
+        html = re.sub(r'<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>', '', html, flags=re.I | re.S)
+        html = re.sub(r'<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>', '', html, flags=re.I | re.S)
+        html = re.sub(r'<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>', '', html, flags=re.I | re.S)
+        
+        # Extract paragraph elements
+        paragraphs = re.findall(r'<p\b[^>]*>(.*?)</p>', html, flags=re.I | re.S)
+        if paragraphs:
+            clean_paragraphs = []
+            for p in paragraphs:
+                p_clean = re.sub(r'<[^>]+>', ' ', p)
+                p_clean = re.sub(r'\s+', ' ', p_clean).strip()
+                if len(p_clean) > 30:
+                    clean_paragraphs.append(p_clean)
+            text = "\n\n".join(clean_paragraphs)
+        else:
+            text = re.sub(r'<[^>]+>', ' ', html)
+            
         text = re.sub(r'\s+', ' ', text).strip()
-        truncated_text = text[:12000]
+        truncated_text = text[:3500]
         
         prompt = (
-            "You are a web parsing AI. Extract the main article text and title from the following noisy text. "
-            "Ignore website navigation, ads, and footers. Do not summarize yet, just output the clean content of the article.\n\n"
-            f"Content:\n{truncated_text}"
+            "You are a web parsing AI. Extract the main article text and title from the following text. "
+            "Ignore navigation and footers. Output only the clean article content:\n\n"
+            f"{truncated_text}"
         )
         
-        completion = chat_with_retry(client, 
+        # Use fallback client if the main one is None
+        g_client = client or article_groq_client
+        if g_client is None:
+            # Try to build one on the fly
+            g_key = os.environ.get("GROQ_API_KEY", os.environ.get("ARTICLE_GROQ_KEY", ""))
+            if g_key:
+                g_client = Groq(api_key=g_key, http_client=httpx.Client(verify=False))
+            else:
+                return jsonify({"error": "Groq client is not initialized and no API key was found in environment."}), 500
+        
+        completion = chat_with_retry(g_client, 
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1
@@ -1289,6 +1325,8 @@ def scrape_article():
         return jsonify({"article": article_content})
     except Exception as e:
         print(f"[Scrape error] {e}")
+        traceback.print_exc()
+        sys.stdout.flush()
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

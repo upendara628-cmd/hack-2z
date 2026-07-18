@@ -275,7 +275,10 @@ const AiPresenter = ({ user }) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: articleUrl })
         });
-        if (!scrapeRes.ok) throw new Error('Scraping failed');
+        if (!scrapeRes.ok) {
+          const errData = await scrapeRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Scraping failed');
+        }
         const scrapeData = await scrapeRes.json();
         sourceText = scrapeData.article || '';
       } else {
