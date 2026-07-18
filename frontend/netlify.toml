@@ -3,8 +3,9 @@
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "16"
+  NODE_VERSION = "18"
   CI = "false"
+  REACT_APP_API_URL = "https://meridian-news-backend.onrender.com"
 
 [[redirects]]
   from = "/*"
