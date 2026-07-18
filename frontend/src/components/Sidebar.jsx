@@ -86,7 +86,16 @@ const Sidebar = ({ onCategorySelect }) => {
         </div>
         <article className={`sidebar-article ${speakingSection === 'politics' ? 'article-card-speaking-highlight' : ''}`}>
           <span className="category-tag">POLITICS</span>
-          <h4 className="sidebar-title">India-China Border Talks Resume After Two-Year Impasse</h4>
+          <h4 className="sidebar-title">
+            <a 
+              href="https://www.thehindu.com/news/national/india-china-border-talks-wmcc-beijing/article68222129.ece" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              style={{ textDecoration: 'none', color: 'inherit' }}
+            >
+              India-China Border Talks Resume After Two-Year Impasse
+            </a>
+          </h4>
           <div className="article-meta">
             <span className="author">Arjun Kapoor</span>
             <span className="time">3 hours ago</span>
@@ -110,7 +119,16 @@ const Sidebar = ({ onCategorySelect }) => {
         </div>
         <article className={`sidebar-article ${speakingSection === 'tech' ? 'article-card-speaking-highlight' : ''}`}>
           <span className="category-tag">TECHNOLOGY</span>
-          <h4 className="sidebar-title">Nvidia's Next Datacenter Chip Will Consume More Power Than a Small Town</h4>
+          <h4 className="sidebar-title">
+            <a 
+              href="https://www.tomshardware.com/tech-industry/nvidias-next-gen-gpus-to-consume-power-equivalent-to-small-towns-due-to-ai-demand" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              style={{ textDecoration: 'none', color: 'inherit' }}
+            >
+              Nvidia's Next Datacenter Chip Will Consume More Power Than a Small Town
+            </a>
+          </h4>
           <div className="article-meta">
             <span className="author">Sofia Bertrand</span>
             <span className="time">2 hours ago</span>
@@ -134,7 +152,16 @@ const Sidebar = ({ onCategorySelect }) => {
         </div>
         <article className={`sidebar-article ${speakingSection === 'business' ? 'article-card-speaking-highlight' : ''}`}>
           <span className="category-tag">BUSINESS</span>
-          <h4 className="sidebar-title">Brazil's Amazon Deforestation Rate Drops 68% Under New Policies</h4>
+          <h4 className="sidebar-title">
+            <a 
+              href="https://www.bbc.com/news/world-latin-america-66388487" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              style={{ textDecoration: 'none', color: 'inherit' }}
+            >
+              Brazil's Amazon Deforestation Rate Drops 68% Under New Policies
+            </a>
+          </h4>
           <div className="article-meta">
             <span className="author">Clara Ribeiro</span>
             <span className="time">5 hours ago</span>
