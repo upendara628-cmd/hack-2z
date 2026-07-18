@@ -9,6 +9,7 @@ const AiPresenter = ({ user }) => {
   const recognitionRef = useRef(null);
   const latestTranscriptRef = useRef('');
   const didInitialized = useRef(false);
+  const welcomedRef = useRef(false);
 
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [isSessionStarted, setIsSessionStarted] = useState(false);
@@ -99,8 +100,17 @@ const AiPresenter = ({ user }) => {
       if (videoRef.current) {
         videoRef.current.muted = true;
       }
-      if (streamManagerRef.current && didInitialized.current) {
+      if (streamManagerRef.current && didInitialized.current && streamManagerRef.current.streamId) {
         streamManagerRef.current.talk(text).catch(err => console.warn('D-ID talk error:', err));
+      } else if (streamManagerRef.current && didInitialized.current) {
+        console.log('[D-ID] Stream connection still negotiating. Queueing talk text.');
+        const checkReady = setInterval(() => {
+          if (streamManagerRef.current && streamManagerRef.current.streamId) {
+            clearInterval(checkReady);
+            streamManagerRef.current.talk(text).catch(err => console.warn('D-ID talk error:', err));
+          }
+        }, 200);
+        setTimeout(() => clearInterval(checkReady), 6000);
       }
     }
 
@@ -129,6 +139,10 @@ const AiPresenter = ({ user }) => {
       }
     } catch (err) {
       if (autoPlay) {
+        if (err.name === 'AbortError') {
+          console.log('[TTS] Audio playback was interrupted by a new request or pause.');
+          return;
+        }
         console.warn('ElevenLabs failed, using browser TTS', err);
         window.speechSynthesis.cancel();
         const cleanText = text.replace(/[*_`]/g, '');
@@ -172,6 +186,12 @@ const AiPresenter = ({ user }) => {
             vid.muted = false;
             setVideoReady(true);
             setConnectionStatus('Connected');
+            
+            // Speak the welcome greeting when successfully connected to D-ID stream!
+            if (!welcomedRef.current) {
+              welcomedRef.current = true;
+              speakResponse('Hello! I am Emma, your AI News Presenter from Truth Lens. Hold the microphone button and speak your question, or paste an article for me to read aloud!');
+            }
           } else if (vid && vid.srcObject && vid.paused) {
             vid.play().catch(() => {});
           }
@@ -195,10 +215,15 @@ const AiPresenter = ({ user }) => {
 
     setIsSessionStarted(true);
     setConnectionStatus('Connecting...');
-    setTimeout(async () => {
-      setConnectionStatus('Emma is ready');
-      await speakResponse('Hello! I am Emma, your AI News Presenter from Truth Lens. Hold the microphone button and speak your question, or paste an article for me to read aloud!');
-    }, 4000);
+    
+    // Safety fallback: if connection takes longer than 6 seconds, welcome the user anyway
+    setTimeout(() => {
+      if (!welcomedRef.current) {
+        welcomedRef.current = true;
+        setConnectionStatus('Emma is ready');
+        speakResponse('Hello! I am Emma, your AI News Presenter from Truth Lens. Hold the microphone button and speak your question, or paste an article for me to read aloud!');
+      }
+    }, 6000);
   };
 
   const handleStopSpeaking = () => {
