@@ -50,15 +50,24 @@ const CategoryView = ({ category, onBack }) => {
   useEffect(() => {
     const fetchCategoryNews = async () => {
       setLoading(true);
+      const startTime = Date.now();
       try {
         const response = await fetch(`${API_BASE_URL}/api/news?keyword=${category.toLowerCase()}`);
         const data = await response.json();
-        setArticles(data || []);
-        calculateBiasStats(data || []);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setArticles(data || []);
+          calculateBiasStats(data || []);
+          setLoading(false);
+        }, delay);
       } catch (err) {
         console.error(`Error fetching category ${category} news:`, err);
-      } finally {
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoading(false);
+        }, delay);
       }
     };
     

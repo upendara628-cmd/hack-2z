@@ -127,6 +127,7 @@ const UserDashboard = ({ user, onSignOut }) => {
 
     const fetchLocalNews = async (cc, city) => {
       setLoading(true);
+      const startTime = Date.now();
       try {
         // Fetch from local python backend
         let url = `${API_BASE_URL}/api/news?country=${cc}`;
@@ -140,12 +141,20 @@ const UserDashboard = ({ user, onSignOut }) => {
           data = await response.json();
         }
 
-        setArticles(data || []);
-        calculateBiasStats(data || []);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setArticles(data || []);
+          calculateBiasStats(data || []);
+          setLoading(false);
+        }, delay);
       } catch (err) {
         console.error("Error fetching local news:", err);
-      } finally {
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoading(false);
+        }, delay);
       }
     };
 

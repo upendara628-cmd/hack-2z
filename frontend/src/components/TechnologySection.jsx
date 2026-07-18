@@ -59,30 +59,48 @@ const TechnologySection = ({ onCategorySelect }) => {
   const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
+    const startTechTime = Date.now();
     fetch(`${API_BASE_URL}/api/news?keyword=technology`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.length > 0) {
-          setTechArticles(data);
-        }
-        setLoadingTech(false);
+        const elapsed = Date.now() - startTechTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          if (data && data.length > 0) {
+            setTechArticles(data);
+          }
+          setLoadingTech(false);
+        }, delay);
       })
       .catch(err => {
         console.error('Error fetching tech news:', err);
-        setLoadingTech(false);
+        const elapsed = Date.now() - startTechTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoadingTech(false);
+        }, delay);
       });
 
+    const startOpinionTime = Date.now();
     fetch(`${API_BASE_URL}/api/news?keyword=opinion`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.length > 0) {
-          setOpinionArticles(data);
-        }
-        setLoadingOpinions(false);
+        const elapsed = Date.now() - startOpinionTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          if (data && data.length > 0) {
+            setOpinionArticles(data);
+          }
+          setLoadingOpinions(false);
+        }, delay);
       })
       .catch(err => {
         console.error('Error fetching opinion news:', err);
-        setLoadingOpinions(false);
+        const elapsed = Date.now() - startOpinionTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoadingOpinions(false);
+        }, delay);
       });
   }, []);
 

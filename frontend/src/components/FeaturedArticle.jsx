@@ -46,17 +46,26 @@ const FeaturedArticle = () => {
   const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
+    const startTime = Date.now();
     fetch(`${API_BASE_URL}/api/news?keyword=world`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.length > 0) {
-          setArticle(data[0]);
-        }
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          if (data && data.length > 0) {
+            setArticle(data[0]);
+          }
+          setLoading(false);
+        }, delay);
       })
       .catch(err => {
         console.error('Error fetching featured article:', err);
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoading(false);
+        }, delay);
       });
   }, []);
 

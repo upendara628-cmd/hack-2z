@@ -91,15 +91,24 @@ const LocalNewsSection = () => {
   const fetchLocalNews = () => {
     setLoading(true);
     setArticles([]);
+    const startTime = Date.now();
     fetch(`${API_BASE_URL}/api/local-news?location=${encodeURIComponent(searchLocation)}&language=${language}`)
       .then(res => res.json())
       .then(data => {
-        setArticles(data || []);
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setArticles(data || []);
+          setLoading(false);
+        }, delay);
       })
       .catch(err => {
         console.error('Error fetching local news:', err);
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoading(false);
+        }, delay);
       });
   };
 

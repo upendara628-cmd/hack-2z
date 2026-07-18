@@ -54,17 +54,26 @@ const PoliticsSection = ({ onCategorySelect }) => {
   const [speakingId, setSpeakingId] = useState(null);
 
   useEffect(() => {
+    const startTime = Date.now();
     fetch(`${API_BASE_URL}/api/news?keyword=politics`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.length > 0) {
-          setArticles(data);
-        }
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          if (data && data.length > 0) {
+            setArticles(data);
+          }
+          setLoading(false);
+        }, delay);
       })
       .catch(err => {
         console.error('Error fetching politics news:', err);
-        setLoading(false);
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 1200 - elapsed);
+        setTimeout(() => {
+          setLoading(false);
+        }, delay);
       });
   }, []);
 
