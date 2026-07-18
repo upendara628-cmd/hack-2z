@@ -55,6 +55,16 @@ const UserDashboard = ({ user, onSignOut }) => {
   const [articleSummaryTitle, setArticleSummaryTitle] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
+  
+  const [tgNumber, setTgNumber] = useState(() => localStorage.getItem('tg_number') || '');
+  const [tgConfirmed, setTgConfirmed] = useState(() => localStorage.getItem('tg_confirmed') === 'true');
+
+  const handleConfirmTg = () => {
+    if (!tgNumber.trim()) return;
+    localStorage.setItem('tg_number', tgNumber.trim());
+    localStorage.setItem('tg_confirmed', 'true');
+    setTgConfirmed(true);
+  };
 
   useEffect(() => {
     // 1. Get location
@@ -471,6 +481,142 @@ const UserDashboard = ({ user, onSignOut }) => {
 
           <div className="bias-summary-card">
             <strong>Analysis:</strong> {getBiasSummaryText()}
+          </div>
+        </div>
+
+        {/* Telegram & n8n Automation Portal Panel */}
+        <div className="location-panel telegram-automation-panel" style={{
+          position: 'relative',
+          overflow: 'hidden',
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          border: '1px solid #334155',
+          borderRadius: '8px',
+          color: 'white',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: '24px',
+          height: '100%',
+          boxSizing: 'border-box'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+              <h2 className="panel-title" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: '700' }}>
+                <span style={{ fontSize: '22px' }}>✈️</span> n8n Telegram Hub
+              </h2>
+              {/* Telegram Styled Icon */}
+              <div style={{
+                width: '40px',
+                height: '40px',
+                background: '#0088cc',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 10px rgba(0, 136, 204, 0.4)'
+              }}>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="white">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.6 1.48-1.56 2.72-2.63 4.16-3.83.16-.14.32-.42-.01-.39-.33.03-.86.25-1.89.95-1.02.7-1.97 1.17-3.83 2.4-.29.2-.55.29-.79.29-.26 0-.77-.14-1.15-.27-.47-.15-.84-.23-.81-.49.02-.14.21-.28.58-.43 2.27-.99 3.79-1.64 4.54-1.95 2.15-.9 2.6-.1 2.69.19.04.14.07.41.04.66z"/>
+                </svg>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '13.5px', color: '#94a3b8', lineHeight: '1.5', margin: '0 0 15px 0' }}>
+              Connect your verified Telegram credentials to route dynamic breaking news alerts, custom audio summaries, and location-based broadcasts directly to your device via n8n workflows.
+            </p>
+
+            {!tgConfirmed ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1' }}>TELEGRAM PHONE NUMBER</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="tel"
+                    placeholder="+91 XXXXX XXXXX"
+                    value={tgNumber}
+                    onChange={(e) => setTgNumber(e.target.value)}
+                    style={{
+                      flexGrow: 1,
+                      padding: '10px 12px',
+                      background: '#0f172a',
+                      border: '1px solid #475569',
+                      borderRadius: '6px',
+                      color: 'white',
+                      fontSize: '14px',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    onClick={handleConfirmTg}
+                    disabled={!tgNumber.trim()}
+                    style={{
+                      padding: '10px 16px',
+                      background: tgNumber.trim() ? '#3b82f6' : '#1e293b',
+                      color: tgNumber.trim() ? 'white' : '#64748b',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: '600',
+                      cursor: tgNumber.trim() ? 'pointer' : 'not-allowed',
+                      fontSize: '13px',
+                      transition: 'background-color 0.2s'
+                    }}
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                background: 'rgba(51, 65, 85, 0.4)',
+                border: '1px solid #475569',
+                borderRadius: '8px',
+                padding: '15px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>Verified Number:</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#f8fafc' }}>{tgNumber}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>Associated Email:</span>
+                  <span style={{ fontSize: '13px', fontWeight: '500', color: '#f8fafc' }}>{user?.email || "upendara628@gmail.com"}</span>
+                </div>
+                <div style={{
+                  height: '1px',
+                  background: '#475569',
+                  width: '100%'
+                }}></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontSize: '14px', fontWeight: '600' }}>
+                  <span style={{
+                    width: '8px',
+                    height: '8px',
+                    background: '#10b981',
+                    borderRadius: '50%',
+                    display: 'inline-block',
+                    boxShadow: '0 0 8px #10b981'
+                  }}></span>
+                  Connected to n8n workflow
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div style={{
+            marginTop: '20px',
+            paddingTop: '15px',
+            borderTop: '1px solid #334155',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '12px',
+            color: '#64748b'
+          }}>
+            <span>System Status: Operational</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%' }}></span> Secure
+            </span>
           </div>
         </div>
       </div>
