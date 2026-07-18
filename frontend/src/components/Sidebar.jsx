@@ -88,7 +88,7 @@ const Sidebar = ({ onCategorySelect }) => {
           <span className="category-tag">POLITICS</span>
           <h4 className="sidebar-title">
             <a 
-              href="https://www.thehindu.com/news/national/india-china-border-talks-wmcc-beijing/article68222129.ece" 
+              href="https://news.google.com/search?q=India-China+Border+Talks+Resume+After+Two-Year+Impasse" 
               target="_blank" 
               rel="noopener noreferrer" 
               style={{ textDecoration: 'none', color: 'inherit' }}
@@ -121,7 +121,7 @@ const Sidebar = ({ onCategorySelect }) => {
           <span className="category-tag">TECHNOLOGY</span>
           <h4 className="sidebar-title">
             <a 
-              href="https://www.tomshardware.com/tech-industry/nvidias-next-gen-gpus-to-consume-power-equivalent-to-small-towns-due-to-ai-demand" 
+              href="https://news.google.com/search?q=Nvidia%27s+Next+Datacenter+Chip+Will+Consume+More+Power+Than+a+Small+Town" 
               target="_blank" 
               rel="noopener noreferrer" 
               style={{ textDecoration: 'none', color: 'inherit' }}
@@ -154,7 +154,7 @@ const Sidebar = ({ onCategorySelect }) => {
           <span className="category-tag">BUSINESS</span>
           <h4 className="sidebar-title">
             <a 
-              href="https://www.bbc.com/news/world-latin-america-66388487" 
+              href="https://news.google.com/search?q=Brazil%27s+Amazon+Deforestation+Rate+Drops+68%25+Under+New+Policies" 
               target="_blank" 
               rel="noopener noreferrer" 
               style={{ textDecoration: 'none', color: 'inherit' }}
