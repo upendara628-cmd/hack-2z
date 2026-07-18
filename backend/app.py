@@ -22,7 +22,10 @@ for env_path in ['.env', '../.env', 'backend/.env', '../backend/.env']:
                 if line.strip() and not line.startswith('#'):
                     parts = line.strip().split('=', 1)
                     if len(parts) == 2:
-                        os.environ[parts[0].strip()] = parts[1].strip()
+                        val = parts[1].strip()
+                        if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                            val = val[1:-1]
+                        os.environ[parts[0].strip()] = val
 
 CURRENTS_API_KEY = os.environ.get("CURRENTS_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -964,7 +967,7 @@ def chat_with_retry(client, *args, **kwargs):
 import base64
 
 # D-ID Auth: encode the entire raw key as base64 for Basic auth
-_DID_RAW = os.environ.get("DID_API_KEY", "dXBlbmRhcmE2MjhAZ21haWwuY29t:SZq4-ViEXjqdbVM6cbDAy")
+_DID_RAW = os.environ.get("DID_API_KEY", "c2FpODgwMjcyQGdtYWlsLmNvbQ:yewoHJS7LuLOwLLnkw2lN")
 DID_AUTH_HEADER = f"Basic {base64.b64encode(_DID_RAW.encode()).decode()}"
 print(f"[D-ID] Auth ready for: {_DID_RAW.split(':')[0][:20]}...")
 
